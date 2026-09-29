@@ -17,7 +17,7 @@ import io.jsonwebtoken.security.Keys;
 @Service
 public class JwtService {
 
-    private static final Key SECRET_KEY = Keys.secretKeyFor(SignatureAlgorithm.HS256);
+    private static final Key SECRET_KEY = Keys.hmacShaKeyFor("unsa-social-network-super-secure-jwt-secret-key-2026-production!".getBytes(java.nio.charset.StandardCharsets.UTF_8));
 
     public String getToken(UserDetails userDetails){
         return getToken(new HashMap<>(),userDetails);

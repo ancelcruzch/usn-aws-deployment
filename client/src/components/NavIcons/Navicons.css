@@ -1,22 +1,106 @@
-.unsa{
-    color:rgb(161, 2, 2);
-    font-size: 25px;
-}
-
-.logout_span{
-    font-size: 15px;
-    color:rgb(161, 2, 2);
-    font-weight: bold;
+.navIcons {
+    display: flex;
     align-items: center;
-    padding-right: 8px;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    background: #ffffff;
+    padding: 0.4rem 0.8rem;
+    border-radius: 9999px;
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.05);
+    border: 1px solid #e2e8f0;
+    width: fit-content;
+    margin-left: auto;
+    position: relative;
 }
 
-.div_logout{
+.unsa-icon {
+    color: #a10202;
+    font-size: 22px;
+    transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.nav-btn-icon {
+    background: transparent;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.5rem;
+    border-radius: 50%;
+    transition: background-color 0.15s ease;
+    position: relative;
+    text-decoration: none;
+}
+
+.nav-btn-icon:hover {
+    background-color: #f1f5f9;
+}
+
+.nav-btn-icon:hover .unsa-icon {
+    transform: scale(1.1);
+}
+
+.nav-btn-active {
+    background-color: #fee2e2;
+}
+
+.nav-notif-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.nav-badge {
+    position: absolute;
+    top: 2px;
+    right: 2px;
+    background: #ef4444;
+    color: white;
+    font-size: 0.65rem;
+    font-weight: 700;
+    min-width: 17px;
+    height: 17px;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 2px solid #ffffff;
+    box-shadow: 0 2px 4px rgba(239, 68, 68, 0.4);
+    animation: pulseBadge 2s infinite;
+}
+
+@keyframes pulseBadge {
+    0%, 100% {
+        transform: scale(1);
+    }
+    50% {
+        transform: scale(1.15);
+    }
+}
+
+.div_logout {
     display: flex;
     flex-direction: row;
     align-items: center;
-    justify-content: center;
-    margin-left: 10px;
-    margin-right: 10px;
+    gap: 0.35rem;
+    padding: 0.4rem 0.75rem;
+    border-radius: 9999px;
     cursor: pointer;
+    background: #fef2f2;
+    border: 1px solid #fee2e2;
+    transition: all 0.15s ease;
+}
+
+.div_logout:hover {
+    background: #fee2e2;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(161, 2, 2, 0.15);
+}
+
+.logout_span {
+    font-size: 13px;
+    color: #a10202;
+    font-weight: 700;
+    letter-spacing: 0.3px;
 }

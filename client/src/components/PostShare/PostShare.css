@@ -1,79 +1,109 @@
-.PostShare{
+.PostShare {
     display: flex;
     gap: 1rem;
-    background-color: var(--cardColor);
-    padding: 1rem;
-    border-radius: 1rem;
+    background: #ffffff;
+    padding: 1.25rem;
+    border-radius: 16px;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
 }
 
-
-.PostShare>img{
+.PostShare > img {
     border-radius: 50%;
-    width: 3rem;
-    height: 3rem;
+    width: 3.2rem;
+    height: 3.2rem;
+    object-fit: cover;
+    border: 2px solid #f1f5f9;
 }
-.PostShare>div{
+
+.PostShare > div {
     display: flex;
     flex-direction: column;
     width: 90%;
     gap: 1rem;
 }
 
-.PostShare>div>input{
-    background-color: var(--inputColor);
-    border-radius: 10px;
-    padding: 10px;
-    font-size: 17px;
-    border: none;
+.PostShare > div > input {
+    background-color: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 12px 16px;
+    font-size: 0.95rem;
     outline: none;
+    transition: all 0.2s ease;
 }
 
-
-
-
-
-.postOptions{
-    display: flex;
-    justify-content: space-around;
+.PostShare > div > input:focus {
+    background-color: #ffffff;
+    border-color: #cbd5e1;
+    box-shadow: 0 0 0 3px rgba(161, 2, 2, 0.08);
 }
 
-.option{
-    padding: 5px;
-    padding-left: 10px;
-    padding-right: 10px;
-    border-radius: 10px;
+.postOptions {
     display: flex;
     align-items: center;
-    justify-content: center;
-    font-size: 12px;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.5rem;
 }
 
-.option:hover{
+.option {
+    padding: 6px 12px;
+    border-radius: 9999px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    border: none;
+    background: #f8fafc;
+    transition: all 0.15s ease;
+}
+
+.option:hover {
     cursor: pointer;
-    border: 1px solid rgb(153, 7, 7);
-}
-.ps-button{
-    padding: 5px;
-    padding-left: 20px;
-    padding-right: 20px;
-    font-size: 12px;
+    background: #f1f5f9;
+    transform: translateY(-1px);
 }
 
+.ps-button {
+    padding: 7px 22px;
+    font-size: 13px;
+    font-weight: 700;
+    border-radius: 9999px;
+    background: #a10202;
+    color: #ffffff;
+    border: none;
+    box-shadow: 0 2px 8px rgba(161, 2, 2, 0.25);
+    transition: all 0.15s ease;
+}
 
-.previewImage{
+.ps-button:hover {
+    background: #800101;
+    transform: translateY(-1px);
+}
+
+.previewImage {
     position: relative;
+    margin-top: 0.5rem;
 }
 
-.previewImage>svg{
+.previewImage > svg {
     position: absolute;
     right: 1rem;
     top: 0.5rem;
     cursor: pointer;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border-radius: 50%;
+    padding: 4px;
+    width: 24px;
+    height: 24px;
 }
 
-.previewImage>img{
+.previewImage > img {
     width: 100%;
     max-height: 20rem;
     object-fit: cover;
-    border-radius: 0.5rem;
+    border-radius: 12px;
 }

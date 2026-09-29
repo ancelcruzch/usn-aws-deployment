@@ -1,32 +1,21 @@
-.RightSide{
+.RightSide {
     display: flex;
     flex-direction: column;
-    gap: 2rem;
+    gap: 1.5rem;
 }
 
-
-.navIcons{
-    margin-top: 1rem;
-    display: flex;
-    justify-content: space-between;
+.r-button {
+    height: 2.8rem;
+    width: 100%;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    background: #a10202;
+    box-shadow: 0 4px 12px rgba(161, 2, 2, 0.2);
 }
 
-.navIcons>a>img{
-    width: 1.5rem;
-    height: 1.5rem;
-}
-
-.navIcons>img{
-    width: 1.5rem;
-    height: 1.5rem;
-}
-
-.navIcons>img:hover{
-    cursor: pointer;
-}
-
-.r-button{
-    height:3rem;
-    width: 80%;
-    align-self: center;
+.r-button:hover {
+    background: #800101;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(161, 2, 2, 0.3);
 }

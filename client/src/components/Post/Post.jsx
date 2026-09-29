@@ -8,9 +8,11 @@ import NotLike from "../../img/notlike.png";
 import { likePost } from "../../api/PostsRequests";
 import { useSelector } from "react-redux";
 import { format } from "timeago.js";
+import { useNotifications } from "../../context/NotificationContext";
 
 const Post = ({ data }) => {
   const user = useSelector((state) => state.authReducer.authData);
+  const { showToast } = useNotifications();
   const [liked, setLiked] = useState(data.likes?.includes(user.id));
   const [likes, setLikes] = useState(data.likes ? data.likes.length : 0);
 
@@ -25,8 +27,10 @@ const Post = ({ data }) => {
 
   const updateLikes = () => {
     likePost(data.id, user.id);
-    setLiked((prev) => !prev);
-    liked ? setLikes((prev) => prev - 1) : setLikes((prev) => prev + 1);
+    const nextState = !liked;
+    setLiked(nextState);
+    nextState ? setLikes((prev) => prev + 1) : setLikes((prev) => prev - 1);
+    showToast(nextState ? "❤️ ¡Te gusta esta publicación!" : "Quitaste tu me gusta", "like");
   };
 
   const renderReactionButton = () => (

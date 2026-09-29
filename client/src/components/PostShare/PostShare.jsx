@@ -9,6 +9,7 @@ import {
 } from "@iconscout/react-unicons";
 import { useDispatch, useSelector } from "react-redux";
 import { uploadImage, uploadPost } from "../../actions/UploadAction";
+import { useNotifications } from "../../context/NotificationContext";
 import PropTypes from "prop-types";
 
 const OptionButton = ({ icon, color, onClick, children }) => {
@@ -33,6 +34,7 @@ OptionButton.propTypes = {
 
 const PostShare = () => {
   const dispatch = useDispatch();
+  const { addNotification } = useNotifications();
   const user = useSelector((state) => state.authReducer.authData);
   const loading = useSelector((state) => state.postReducer.uploading);
   const [image, setImage] = useState(null);
@@ -69,6 +71,11 @@ const PostShare = () => {
           .then((response) => {
             newPost.image = response;
             dispatch(uploadPost(newPost));
+            addNotification({
+              type: "success",
+              title: "¡Publicación compartida!",
+              desc: "Tu imagen y publicación han sido compartidas en el feed."
+            });
             resetShare();
           })
           .catch((error) => {
@@ -76,6 +83,11 @@ const PostShare = () => {
           });
       } else {
         dispatch(uploadPost(newPost));
+        addNotification({
+          type: "success",
+          title: "¡Publicación compartida!",
+          desc: "Tu publicación ya está visible para la comunidad."
+        });
         resetShare();
       }
     } catch (error) {

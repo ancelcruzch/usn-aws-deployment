@@ -1,34 +1,57 @@
-import React from "react";
-
-import {Link} from "react-router-dom";
+import React, { useState } from "react";
+import { Link, useNavigate } from "react-router-dom";
 import "./Navicons.css";
 import { AiFillHome } from 'react-icons/ai';
-import { BsFillChatDotsFill } from 'react-icons/bs';
-import { IoLogOut } from "react-icons/io5";
-
+import { IoLogOut, IoNotificationsOutline, IoNotifications } from "react-icons/io5";
 import { useDispatch } from "react-redux";
 import { logout } from "../../actions/AuthActions";
+import { useNotifications } from "../../context/NotificationContext";
+import NotificationDropdown from "../Notifications/NotificationDropdown";
 
 const NavIcons = () => {
     const dispatch = useDispatch();
+    const navigate = useNavigate();
+    const { unreadCount } = useNotifications();
+    const [notifOpen, setNotifOpen] = useState(false);
 
     const handleLogOut = () => {
         dispatch(logout());
+        navigate("/auth");
     };
-    
 
     return (
         <div className="navIcons">
-            <Link to="../home">
-                <AiFillHome className="unsa"/>
+            <Link to="../home" className="nav-btn-icon" title="Inicio">
+                <AiFillHome className="unsa-icon" />
             </Link>
-            <Link to="../chat" className="messages_icon">
-                <BsFillChatDotsFill className="unsa"/>
-            </Link>
+
+            {/* Notification Bell */}
+            <div className="nav-notif-wrapper">
+                <button 
+                    className={`nav-btn-icon ${notifOpen ? "nav-btn-active" : ""}`}
+                    onClick={() => setNotifOpen((prev) => !prev)}
+                    title="Notificaciones"
+                >
+                    {unreadCount > 0 ? (
+                        <IoNotifications className="unsa-icon" />
+                    ) : (
+                        <IoNotificationsOutline className="unsa-icon" />
+                    )}
+                    {unreadCount > 0 && (
+                        <span className="nav-badge">{unreadCount > 9 ? "9+" : unreadCount}</span>
+                    )}
+                </button>
+
+                <NotificationDropdown 
+                    isOpen={notifOpen} 
+                    onClose={() => setNotifOpen(false)} 
+                />
+            </div>
             
-            <div className="div_logout">
+            {/* Logout button */}
+            <div className="div_logout" onClick={handleLogOut} title="Cerrar sesión">
                 <span className="logout_span">Exit</span>
-                <IoLogOut className="unsa" onClick={handleLogOut} />
+                <IoLogOut className="unsa-icon" />
             </div>
         </div>
     );

@@ -1,13 +1,23 @@
-FROM node:18.19.0-slim
+# Etapa 1: Construcción de la aplicación React
+FROM node:18-alpine AS build
 
 WORKDIR /app
 
 COPY package*.json ./
+RUN npm install --legacy-peer-deps
+
+COPY . .
+RUN npm run build
+
+# Etapa 2: Servidor liviano para producción
+FROM node:18-alpine
+
+WORKDIR /app
 
 RUN npm install -g serve
 
-COPY . .
+COPY --from=build /app/build ./build
 
 EXPOSE 3000
 
-CMD ["serve", "-s", "build"]
+CMD ["serve", "-s", "build", "-l", "3000"]

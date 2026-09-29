@@ -35,6 +35,7 @@ public class SecurityConfig {
                                                 .requestMatchers("/chat/**").permitAll()
                                                 .requestMatchers("/message/**").permitAll()
                                                 .requestMatchers("/upload/**", "/upload").permitAll()
+                                                .requestMatchers("/notifications/**").permitAll()
                                                 .anyRequest().authenticated())
                                 .sessionManagement(sessionManager -> sessionManager
                                                 .sessionCreationPolicy(SessionCreationPolicy.STATELESS))

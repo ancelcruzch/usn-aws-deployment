@@ -13,7 +13,10 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.unsa.backend.notifications.NotificationService;
 import com.unsa.backend.services.TimelineService;
+import com.unsa.backend.users.UserModel;
+import com.unsa.backend.users.UserService;
 
 import lombok.RequiredArgsConstructor;
 
@@ -24,6 +27,8 @@ public class PostController {
 
     private final PostService postService;
     private final TimelineService timelineService;
+    private final NotificationService notificationService;
+    private final UserService userService;
 
     @GetMapping
     public ResponseEntity<List<PostModel>> getPosts() {
@@ -112,6 +117,15 @@ public class PostController {
                 return new ResponseEntity<>("Post disliked!", HttpStatus.OK);
             } else {
                 postService.addLike(post, likeRequest.getUserId());
+                try {
+                    UserModel liker = userService.getUser(likeRequest.getUserId());
+                    String name = (liker != null && liker.getFirstname() != null)
+                            ? liker.getFirstname() + " " + (liker.getLastname() != null ? liker.getLastname() : "")
+                            : "Un usuario";
+                    notificationService.createNotification(post.getUserId(), likeRequest.getUserId(), name.trim(), "LIKE", "le dio me gusta a tu publicación.");
+                } catch (Exception ex) {
+                    // Ignorar si falla la notificación para no bloquear el like
+                }
                 return new ResponseEntity<>("Post liked!", HttpStatus.OK);
             }
         } catch (Exception e) {

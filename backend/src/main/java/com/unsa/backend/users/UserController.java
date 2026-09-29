@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import com.unsa.backend.notifications.NotificationService;
 import jakarta.persistence.EntityNotFoundException;
 import lombok.AllArgsConstructor;
 
@@ -23,6 +24,7 @@ import lombok.AllArgsConstructor;
 public class UserController {
 
     final UserService userService;
+    final NotificationService notificationService;
 
     @GetMapping
     public ResponseEntity<List<UserModel>> getUser() {
@@ -81,6 +83,15 @@ public class UserController {
         try {
             Long followerId = ((UserModel) userDetails).getId();
             userService.followUser(followerId, id);
+            try {
+                UserModel follower = (UserModel) userDetails;
+                String name = (follower.getFirstname() != null)
+                        ? follower.getFirstname() + " " + (follower.getLastname() != null ? follower.getLastname() : "")
+                        : "Un usuario";
+                notificationService.createNotification(id, followerId, name.trim(), "FOLLOW", "ha comenzado a seguirte.");
+            } catch (Exception ex) {
+                // Ignorar si falla la notificación
+            }
             return new ResponseEntity<>("User followed!", HttpStatus.OK);
         } catch (EntityNotFoundException e) {
             // Manejar la excepción cuando no se encuentra el usuario

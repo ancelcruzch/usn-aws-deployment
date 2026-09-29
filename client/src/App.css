@@ -1,27 +1,30 @@
 :root {
-  --yellow: rgb(134, 8, 8);
-  --orange: rgb(134, 8, 8);
-  --black: #242d49;
-  --gray: rgba(36, 45, 73, 0.65);
-  --profileShadow: 0px 4px 17px 2px rgba(0, 0, 0, 0.25);
-  --hrColor: #cfcdcd;
-  --cardColor: rgba(255, 255, 255, 0.64);
-  --buttonBg: linear-gradient(98.63deg, rgb(255, 255, 255) 0%, rgb(255, 255, 255) 100%);
+  --yellow: #a10202;
+  --orange: #a10202;
+  --black: #0f172a;
+  --gray: #64748b;
+  --profileShadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+  --hrColor: #f1f5f9;
+  --cardColor: rgba(255, 255, 255, 0.92);
+  --buttonBg: #a10202;
   --inputColor: rgba(40, 52, 62, 0.07);
-  --photo: #4CB256;
-  --video: #4A4EB7;
-  --location: #ac1a1a;
---shedule: #cf4ae1;
+  --photo: #10b981;
+  --video: #3b82f6;
+  --location: #ef4444;
+  --shedule: #8b5cf6;
 }
 
 .App {
-  overflow: hidden;
+  min-height: 100vh;
   color: var(--black);
   background: rgb(235, 206, 126);
-  padding: 1rem 1rem;
+  padding: 1rem 0;
+  position: relative;
+  overflow-x: hidden;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
 }
 
-/* blur */
+/* blur ambient lights */
 .blur {
   position: absolute;
   width: 22rem;
@@ -29,6 +32,8 @@
   border-radius: 50%;
   background: rgb(161, 2, 2);
   filter: blur(95px);
+  pointer-events: none;
+  z-index: 0;
 }
 
 .button {
@@ -37,57 +42,75 @@
   justify-content: center;
   color: white;
   border: none;
-  border-radius: 0.5rem;
+  border-radius: 8px;
   background: var(--orange);
-  transition: all 100ms ease-out;
+  font-weight: 600;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(161, 2, 2, 0.2);
 }
 
 .button:hover {
-  color: var(--orange);
-  border: 2px solid var(--orange);
+  color: white;
+  border: none;
   cursor: pointer;
-  background: white;
+  background: #800101;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(161, 2, 2, 0.3);
 }
 
-.button:disabled{
-  background: silver;
+.button:disabled {
+  background: #cbd5e1;
+  color: #94a3b8;
+  box-shadow: none;
   pointer-events: none;
 }
 
-
 ::-webkit-scrollbar {
-  display: none;
+  width: 6px;
 }
 
+::-webkit-scrollbar-track {
+  background: transparent;
+}
 
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 9999px;
+}
 
 /* Form Styling */
-.infoForm{
+.infoForm {
   display: flex;
   flex-direction: column;
   justify-content: center;
   align-items: center;
-  gap: 2rem;
+  gap: 1.5rem;
 }
 
-.infoInput{
-  border: none;
+.infoInput {
+  border: 1px solid rgba(0, 0, 0, 0.1);
   outline: none;
-  background-color: var(--inputColor);
-  border-radius: 8px;
-  padding: 20px;
-  flex:1;
+  background-color: #ffffff;
+  border-radius: 10px;
+  padding: 12px 16px;
+  flex: 1;
+  font-size: 0.95rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
-.infoForm>div{
+.infoInput:focus {
+  border-color: #a10202;
+  box-shadow: 0 0 0 3px rgba(161, 2, 2, 0.15);
+}
+
+.infoForm > div {
   display: flex;
   gap: 1rem;
-  height: 2rem;
   width: 90%;
 }
 
-.infoButton{
-  width: 6rem;
-  height: 2rem;
+.infoButton {
+  width: 8rem;
+  height: 2.4rem;
   align-self: flex-end;
 }

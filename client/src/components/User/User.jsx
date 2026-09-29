@@ -2,18 +2,29 @@ import React, { useState } from "react";
 import PropTypes from "prop-types";
 import { useSelector, useDispatch } from "react-redux";
 import { followUser, unfollowUser } from "../../actions/UserAction";
+import { useNotifications } from "../../context/NotificationContext";
+
 const User = ({ person }) => {
   const publicFolder = process.env.REACT_APP_PUBLIC_FOLDER;
   const user = useSelector((state) => state.authReducer.authData);
   const dispatch = useDispatch();
+  const { addNotification, showToast } = useNotifications();
 
   const [following, setFollowing] = useState(
     person.followers.includes(user.id)
   );
   const handleFollow = () => {
-    following
-      ? dispatch(unfollowUser(person.id, user))
-      : dispatch(followUser(person.id, user));
+    if (following) {
+      dispatch(unfollowUser(person.id, user));
+      showToast(`Dejaste de seguir a @${person.username}`, "info");
+    } else {
+      dispatch(followUser(person.id, user));
+      addNotification({
+        type: "follow",
+        title: "Nuevo seguimiento",
+        desc: `Comenzaste a seguir a @${person.username}. Ahora verás sus novedades en el feed.`
+      });
+    }
     setFollowing((prev) => !prev);
   };
   return (

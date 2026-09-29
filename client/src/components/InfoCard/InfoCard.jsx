@@ -3,12 +3,13 @@ import "./InfoCard.css";
 import { UilPen } from "@iconscout/react-unicons";
 import ProfileModal from "../ProfileModal/ProfileModal";
 import { useDispatch, useSelector } from "react-redux";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import * as UserApi from "../../api/UserRequests.js";
 import { logout } from "../../actions/AuthActions";
 
 const InfoCard = () => {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
   const params = useParams();
   const [modalOpened, setModalOpened] = useState(false);
   const profileUserId = params.id;
@@ -19,6 +20,7 @@ const InfoCard = () => {
 
   const handleLogOut = () => {
     dispatch(logout());
+    navigate("/auth");
   };
 
   useEffect(() => {

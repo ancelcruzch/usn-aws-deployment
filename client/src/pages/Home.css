@@ -1,6 +1,22 @@
 .Home {
   position: relative;
+  z-index: 1;
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: 0 1rem;
   display: grid;
-  grid-template-columns: 18rem auto 20rem;
-  gap: 1rem;
+  grid-template-columns: 19rem 1fr 20rem;
+  gap: 1.5rem;
+}
+
+@media (max-width: 1100px) {
+  .Home {
+    grid-template-columns: 18rem 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .Home {
+    grid-template-columns: 1fr;
+  }
 }
