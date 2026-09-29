@@ -4,3 +4,8 @@ client@tmp/
 jmeter.log
 /reports/*
 .vim
+
+# Archivos y carpetas ignorados a peticion
+README.md
+readme/
+socket/
