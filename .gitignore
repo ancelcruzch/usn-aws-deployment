@@ -1,0 +1,45 @@
+# Variables y secretos
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
+# Node / React
+node_modules/
+**/node_modules/
+client/build/
+npm-debug.log*
+
+# Java / Spring Boot
+backend/target/
+backend/build/
+.gradle/
+*.class
+*.jar
+*.war
+
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+crash.log
+crash.*.log
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Reportes y temporales
+reports/
+coverage/
+*.log
+
