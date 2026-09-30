@@ -4,7 +4,7 @@ metadata:
   name: backend
   namespace: usn
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   selector:
     app: backend
   ports:

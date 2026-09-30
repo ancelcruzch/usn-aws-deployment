@@ -11,6 +11,7 @@ COPY . .
 ARG REACT_APP_API_URL
 ARG REACT_APP_PUBLIC_FOLDER
 ARG REACT_APP_SOCKET_URL
+ARG REACT_APP_AI_URL
 RUN npm run build
 
 # Etapa 2: Servidor liviano para producción
