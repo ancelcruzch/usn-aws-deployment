@@ -46,12 +46,12 @@ module "eks" {
 
       subnet_ids     = module.vpc.private_subnets
       ami_type       = "AL2023_x86_64_STANDARD"
-      instance_types = ["t3.small"]
+      instance_types = ["t3.medium"]
       capacity_type  = "ON_DEMAND"
 
-      desired_size = 1
-      min_size     = 1
-      max_size     = 2
+      desired_size = 2
+      min_size     = 2
+      max_size     = 4
       disk_size    = 20
 
       # disk_size se envía a EKS solo sin launch template personalizado.
