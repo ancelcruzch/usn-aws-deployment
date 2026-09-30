@@ -52,23 +52,32 @@ const ChatBox = ({ chat, currentUser, setSendMessage, receivedMessage }) => {
   }, [messages]);
 
   // Send Message
-  const handleSend = async (e) => {
-    e.preventDefault();
+  const handleSend = async (e, directText = null) => {
+    if (e && e.preventDefault) e.preventDefault();
+    const textToSend = directText !== null ? directText : newMessage;
+    if (!textToSend || !textToSend.trim()) return;
+
     const message = {
       senderId: currentUser,
-      text: newMessage,
+      text: textToSend,
       chatId: chat.id,
     };
-    const receiverId = chat.members.find((id) => id !== currentUser);
+    const receiverId = chat?.members?.find((id) => id !== currentUser);
+
+    // Inmediatamente vaciar el input para respuesta instantánea
+    setNewMessage("");
+
     // send message to socket server
-    setSendMessage({ ...message, receiverId });
+    if (receiverId) {
+      setSendMessage({ ...message, receiverId });
+    }
+
     // send message to database
     try {
       const { data } = await addMessage(message);
-      setMessages([...messages, data]);
-      setNewMessage("");
-    } catch {
-      console.log("error");
+      setMessages((prev) => [...prev, data]);
+    } catch (err) {
+      console.log("error sending message", err);
     }
   };
 
@@ -137,10 +146,20 @@ const ChatBox = ({ chat, currentUser, setSendMessage, receivedMessage }) => {
               <div className="button-container">
                 <button onClick={() => imageRef.current.click()}>+</button>
               </div>
-              <InputEmoji value={newMessage} onChange={handleChange} />
-              <div className="send-button button">
-                <button onClick={handleSend}>Send</button>
-              </div>
+              <InputEmoji
+                value={newMessage}
+                onChange={handleChange}
+                cleanOnEnter
+                onEnter={(text) => handleSend(null, text)}
+                placeholder="Escribe un mensaje..."
+              />
+              <button
+                className="send-button button"
+                onClick={(e) => handleSend(e)}
+                style={{ cursor: "pointer", border: "none", padding: "0 20px" }}
+              >
+                Send
+              </button>
               <input
                 type="file"
                 name=""

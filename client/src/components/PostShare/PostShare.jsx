@@ -11,6 +11,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { uploadImage, uploadPost } from "../../actions/UploadAction";
 import { useNotifications } from "../../context/NotificationContext";
 import PropTypes from "prop-types";
+import axios from "axios";
 
 const OptionButton = ({ icon, color, onClick, children }) => {
   return (
@@ -34,10 +35,11 @@ OptionButton.propTypes = {
 
 const PostShare = () => {
   const dispatch = useDispatch();
-  const { addNotification } = useNotifications();
+  const { showToast } = useNotifications();
   const user = useSelector((state) => state.authReducer.authData);
   const loading = useSelector((state) => state.postReducer.uploading);
   const [image, setImage] = useState(null);
+  const [aiStatus, setAiStatus] = useState(null);
   const desc = useRef();
   const serverPublic = process.env.REACT_APP_PUBLIC_FOLDER;
   const imageRef = useRef();
@@ -54,9 +56,56 @@ const PostShare = () => {
     }
   };
 
+  // Analizar texto en vivo con la IA
+  const handleTextChange = async (e) => {
+    const text = e.target.value.trim();
+    if (!text || text.length < 3) {
+      setAiStatus(null);
+      return;
+    }
+    try {
+      const aiUrl = process.env.REACT_APP_AI_URL || "http://localhost:8000";
+      const { data } = await axios.post(`${aiUrl}/analyze`, {
+        text,
+        user_id: user.id,
+      });
+      setAiStatus(data);
+    } catch {
+      // AI service silencioso si no responde
+    }
+  };
+
   // handle post upload
   const handleUpload = async (e) => {
     e.preventDefault();
+    const textContent = desc.current.value ? desc.current.value.trim() : "";
+
+    // 🤖 Verificación en tiempo real con el Microservicio de IA
+    if (textContent) {
+      try {
+        const aiUrl = process.env.REACT_APP_AI_URL || "http://localhost:8000";
+        const { data: aiResult } = await axios.post(`${aiUrl}/analyze`, {
+          text: textContent,
+          user_id: user.id,
+        });
+        setAiStatus(aiResult);
+
+        // Si la IA RECHAZA la publicación por toxicidad u odio:
+        if (aiResult.status === "REJECTED") {
+          showToast(`🚫 Bloqueado por IA: ${aiResult.moderation_reason}`, "error");
+          return; // SE DETIENE LA PUBLICACIÓN
+        }
+
+        if (aiResult.status === "FLAGGED") {
+          showToast(`⚠️ Advertencia de IA: Sentimiento negativo detectado`, "warning");
+        } else {
+          showToast(`✨ IA: Sentimiento ${aiResult.sentiment} (${aiResult.sentiment_score > 0 ? "+" : ""}${aiResult.sentiment_score})`, "success");
+        }
+      } catch (err) {
+        console.warn("AI service no disponible:", err);
+      }
+    }
+
     const newPost = {
       userId: user.id,
       desc: desc.current.value,
@@ -71,11 +120,7 @@ const PostShare = () => {
           .then((response) => {
             newPost.image = response;
             dispatch(uploadPost(newPost));
-            addNotification({
-              type: "success",
-              title: "¡Publicación compartida!",
-              desc: "Tu imagen y publicación han sido compartidas en el feed."
-            });
+            showToast("¡Publicación compartida con éxito!", "success");
             resetShare();
           })
           .catch((error) => {
@@ -83,11 +128,7 @@ const PostShare = () => {
           });
       } else {
         dispatch(uploadPost(newPost));
-        addNotification({
-          type: "success",
-          title: "¡Publicación compartida!",
-          desc: "Tu publicación ya está visible para la comunidad."
-        });
+        showToast("¡Publicación compartida con éxito!", "success");
         resetShare();
       }
     } catch (error) {
@@ -98,7 +139,8 @@ const PostShare = () => {
   // Reset Post Share
   const resetShare = () => {
     setImage(null);
-    desc.current.value = "";
+    setAiStatus(null);
+    if (desc.current) desc.current.value = "";
   };
   return (
     <div className="PostShare">
@@ -113,10 +155,35 @@ const PostShare = () => {
       <div>
         <input
           type="text"
-          placeholder="What's happening?"
+          placeholder="¿Qué estás pensando?"
           required
           ref={desc}
+          onChange={handleTextChange}
         />
+        {aiStatus && (
+          <div style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            padding: "6px 12px",
+            borderRadius: "8px",
+            fontSize: "12px",
+            fontWeight: "600",
+            margin: "6px 0",
+            background: aiStatus.status === "REJECTED" ? "rgba(239, 68, 68, 0.15)" : aiStatus.status === "FLAGGED" ? "rgba(245, 158, 11, 0.15)" : "rgba(16, 185, 129, 0.15)",
+            color: aiStatus.status === "REJECTED" ? "#b91c1c" : aiStatus.status === "FLAGGED" ? "#b45309" : "#047857",
+            border: `1px solid ${aiStatus.status === "REJECTED" ? "#f87171" : aiStatus.status === "FLAGGED" ? "#fbbf24" : "#6ee7b7"}`
+          }}>
+            <span>🤖 IA Moderación:</span>
+            <span>
+              {aiStatus.status === "REJECTED"
+                ? `🚫 Rechazado (${aiStatus.moderation_reason})`
+                : aiStatus.status === "FLAGGED"
+                ? `⚠️ Advertencia (Sentimiento negativo)`
+                : `✨ Aprobado • Sentimiento ${aiStatus.sentiment} (${aiStatus.sentiment_score > 0 ? "+" : ""}${aiStatus.sentiment_score})`}
+            </span>
+          </div>
+        )}
         <div className="postOptions">
           <OptionButton
             icon={<UilScenery />}

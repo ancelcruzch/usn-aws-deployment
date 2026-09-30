@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import "./Navicons.css";
 import { AiFillHome } from 'react-icons/ai';
-import { IoLogOut, IoNotificationsOutline, IoNotifications } from "react-icons/io5";
+import { IoLogOut, IoNotificationsOutline, IoNotifications, IoChatbubbleEllipses } from "react-icons/io5";
 import { useDispatch } from "react-redux";
 import { logout } from "../../actions/AuthActions";
 import { useNotifications } from "../../context/NotificationContext";
@@ -23,6 +23,11 @@ const NavIcons = () => {
         <div className="navIcons">
             <Link to="../home" className="nav-btn-icon" title="Inicio">
                 <AiFillHome className="unsa-icon" />
+            </Link>
+
+            {/* Chat button */}
+            <Link to="../chat" className="nav-btn-icon" title="Chat en vivo">
+                <IoChatbubbleEllipses className="unsa-icon" />
             </Link>
 
             {/* Notification Bell */}

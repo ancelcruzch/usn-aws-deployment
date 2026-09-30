@@ -1,0 +1,88 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mysql-init-scripts
+  namespace: usn
+data:
+  init.sql: |
+    CREATE DATABASE IF NOT EXISTS `railway` 
+        DEFAULT CHARACTER SET utf8mb4 
+        COLLATE utf8mb4_unicode_ci;
+
+    USE `railway`;
+
+    CREATE TABLE IF NOT EXISTS `users` (
+        `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+        `username` VARCHAR(255) NOT NULL UNIQUE,
+        `password` VARCHAR(255) NOT NULL,
+        `firstname` VARCHAR(255),
+        `lastname` VARCHAR(255),
+        `is_admin` BOOLEAN DEFAULT FALSE,
+        `profile_picture` VARCHAR(255),
+        `cover_picture` VARCHAR(255),
+        `about` VARCHAR(255),
+        `lives_in` VARCHAR(255),
+        `works_at` VARCHAR(255),
+        `relationship` VARCHAR(255),
+        `country` VARCHAR(255),
+        `role` VARCHAR(50) DEFAULT 'USER'
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS `user_followers` (
+        `user_id` BIGINT NOT NULL,
+        `followers` BIGINT NOT NULL,
+        CONSTRAINT `fk_user_followers_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS `user_following` (
+        `user_id` BIGINT NOT NULL,
+        `following` BIGINT NOT NULL,
+        CONSTRAINT `fk_user_following_user` FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS `posts` (
+        `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+        `user_id` BIGINT NOT NULL,
+        `description` TEXT NOT NULL,
+        `image` VARCHAR(255),
+        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS `post_likes` (
+        `post_id` BIGINT NOT NULL,
+        `likes` BIGINT NOT NULL,
+        CONSTRAINT `fk_post_likes_post` FOREIGN KEY (`post_id`) REFERENCES `posts` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS `chat` (
+        `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS `chat_members` (
+        `chat_model_id` BIGINT NOT NULL,
+        `members` BIGINT NOT NULL,
+        CONSTRAINT `fk_chat_members_chat` FOREIGN KEY (`chat_model_id`) REFERENCES `chat` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS `message` (
+        `message_id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+        `chat_id` BIGINT NOT NULL,
+        `sender_id` BIGINT NOT NULL,
+        `text` TEXT,
+        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+    CREATE TABLE IF NOT EXISTS `notifications` (
+        `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+        `recipient_id` BIGINT NOT NULL,
+        `sender_id` BIGINT NOT NULL,
+        `sender_name` VARCHAR(255),
+        `type` VARCHAR(50) NOT NULL,
+        `message` TEXT NOT NULL,
+        `is_read` BOOLEAN DEFAULT FALSE,
+        `created_at` DATETIME DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT `fk_notifications_recipient` FOREIGN KEY (`recipient_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

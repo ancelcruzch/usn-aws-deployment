@@ -1,0 +1,134 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: Plantilla de CloudFormation para el aprovisionamiento automatizado de una instancia EC2 con Kubernetes (k3s) y puertos configurados para Universe Social Network.
+
+Parameters:
+  InstanceType:
+    Type: String
+    Default: t3.medium
+    AllowedValues:
+      - t3.medium
+      - t3.large
+      - t2.medium
+    Description: Tipo de instancia EC2 para ejecutar Kubernetes y los microservicios.
+
+  VolumeSize:
+    Type: Number
+    Default: 25
+    MinValue: 20
+    MaxValue: 50
+    Description: Tamano del disco raiz en GiB (almacenamiento para imagenes Docker y Kubernetes).
+
+Mappings:
+  RegionToAmi:
+    us-east-1:
+      AMI: ami-0c7217cdde317cfec # Ubuntu 22.04 LTS en us-east-1
+    us-east-2:
+      AMI: ami-05fb0b8c1424f266b # Ubuntu 22.04 LTS en us-east-2
+    us-west-2:
+      AMI: ami-008fe2fc65e7173e4 # Ubuntu 22.04 LTS en us-west-2
+
+Resources:
+  USNSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Reglas de firewall para Universe Social Network y Kubernetes
+      SecurityGroupIngress:
+        # Puerto 22: Acceso SSH
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        # Puerto 80: HTTP publico
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+        # Puerto 3000: Frontend Web React
+        - IpProtocol: tcp
+          FromPort: 3000
+          ToPort: 3000
+          CidrIp: 0.0.0.0/0
+        # Puerto 5000: Backend REST API Spring Boot
+        - IpProtocol: tcp
+          FromPort: 5000
+          ToPort: 5000
+          CidrIp: 0.0.0.0/0
+        # Puerto 8000: Microservicio de Inteligencia Artificial (FastAPI)
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          CidrIp: 0.0.0.0/0
+        # Puerto 8800: Servidor WebSockets y Chat
+        - IpProtocol: tcp
+          FromPort: 8800
+          ToPort: 8800
+          CidrIp: 0.0.0.0/0
+        # Puerto 6443: API Server de Kubernetes
+        - IpProtocol: tcp
+          FromPort: 6443
+          ToPort: 6443
+          CidrIp: 0.0.0.0/0
+      Tags:
+        - Key: Name
+          Value: usn-k8s-security-group
+
+  USNK8sInstance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: !Ref InstanceType
+      ImageId: !FindInMap [RegionToAmi, !Ref "AWS::Region", AMI]
+      SecurityGroupIds:
+        - !Ref USNSecurityGroup
+      BlockDeviceMappings:
+        - DeviceName: /dev/sda1
+          Ebs:
+            VolumeSize: !Ref VolumeSize
+            VolumeType: gp3
+            DeleteOnTermination: true
+      UserData:
+        Fn::Base64: !Sub |
+          #!/bin/bash
+          set -e
+          
+          # 1. Actualizacion del sistema
+          apt-get update -y
+          apt-get install -y git curl apt-transport-https ca-certificates gnupg lsb-release
+          
+          # 2. Instalacion de Kubernetes (k3s)
+          curl -sfL https://get.k3s.io | sh -s - --write-kubeconfig-mode 644
+          
+          # 3. Configuracion de variables y alias para kubectl
+          mkdir -p /home/ubuntu/.kube
+          cp /etc/rancher/k3s/k3s.yaml /home/ubuntu/.kube/config
+          chown -R ubuntu:ubuntu /home/ubuntu/.kube
+          echo "export KUBECONFIG=/home/ubuntu/.kube/config" >> /home/ubuntu/.bashrc
+          echo "alias k=kubectl" >> /home/ubuntu/.bashrc
+          
+          # 4. Esperar a que el nodo de Kubernetes este listo
+          until kubectl get nodes | grep -w "Ready"; do
+            sleep 3
+          done
+          
+          echo "Kubernetes inicializado correctamente." > /home/ubuntu/k8s_ready.txt
+      Tags:
+        - Key: Name
+          Value: usn-k8s-node
+        - Key: Project
+          Value: UniverseSocialNetwork
+
+Outputs:
+  PublicIP:
+    Description: Direccion IP publica de la instancia para acceder a los microservicios
+    Value: !GetAtt USNK8sInstance.PublicIp
+
+  PublicDNS:
+    Description: Nombre de dominio publico generado por AWS
+    Value: !GetAtt USNK8sInstance.PublicDnsName
+
+  FrontendURL:
+    Description: URL de acceso directo a la aplicacion web
+    Value: !Sub "http://${USNK8sInstance.PublicIp}:3000"
+
+  AIAPIURL:
+    Description: URL del panel de documentacion del servicio de Inteligencia Artificial
+    Value: !Sub "http://${USNK8sInstance.PublicIp}:8000/docs"

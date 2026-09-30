@@ -1,4 +1,7 @@
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: social-network
+  name: usn
+  labels:
+    app.kubernetes.io/name: universe-social-network
+    environment: production
