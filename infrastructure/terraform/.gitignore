@@ -1,0 +1,32 @@
+# Caché de Terraform; conservar .terraform.lock.hcl para reproducibilidad.
+.terraform/
+*.tfstate
+*.tfstate.*
+.terraform.tfstate.lock.info
+
+# Planes binarios, exportaciones y logs locales.
+*.tfplan
+*.plan
+tfplan
+tfplan.*
+plan.out
+plan.json
+plan.txt
+crash.log
+crash.*.log
+*.log
+
+# Overrides y archivos potencialmente sensibles.
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+*.tfvars
+*.tfvars.json
+!terraform.tfvars
+.env
+.env.*
+*.pem
+*.key
+credentials
+secrets.*
