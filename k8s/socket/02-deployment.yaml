@@ -1,0 +1,37 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: socket
+  namespace: usn
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: socket
+  template:
+    metadata:
+      labels:
+        app: socket
+    spec:
+      containers:
+        - name: socket
+          image: 912759111826.dkr.ecr.us-east-1.amazonaws.com/usn-socket:v1
+          ports:
+            - name: http
+              containerPort: 8800
+          env:
+            - name: PORT
+              value: "8800"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10

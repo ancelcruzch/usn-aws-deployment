@@ -1,0 +1,55 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: usn
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: backend
+  template:
+    metadata:
+      labels:
+        app: backend
+    spec:
+      containers:
+        - name: backend
+          image: 912759111826.dkr.ecr.us-east-1.amazonaws.com/usn-backend:v1
+          ports:
+            - name: http
+              containerPort: 5000
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://mysql.usn.svc.cluster.local:3306/railway
+            - name: SPRING_DATASOURCE_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-credentials
+                  key: MYSQL_USER
+            - name: SPRING_DATASOURCE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mysql-credentials
+                  key: MYSQL_PASSWORD
+            - name: JAVA_TOOL_OPTIONS
+              value: -XX:MaxRAMPercentage=60.0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 512Mi
+            limits:
+              memory: 768Mi
+          startupProbe:
+            httpGet:
+              path: /images/defaultProfile.png
+              port: http
+            periodSeconds: 5
+            failureThreshold: 60
+          readinessProbe:
+            httpGet:
+              path: /images/defaultProfile.png
+              port: http
+            periodSeconds: 10
