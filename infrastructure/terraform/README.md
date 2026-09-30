@@ -24,7 +24,8 @@ No se ha ejecutado `terraform apply`.
   pública de administración.
 - Roles IAM, permisos de lectura de ECR para los nodos, entrada administrativa
   para el creador, OIDC, cifrado KMS y logs de control plane con retención de 7 días.
-- Add-ons de infraestructura: VPC CNI, kube-proxy y CoreDNS. No hay manifests
+- Add-ons de infraestructura: VPC CNI, kube-proxy, CoreDNS, EKS Pod Identity Agent
+  y Amazon EBS CSI Driver. No hay manifests
   ni recursos Terraform Kubernetes/Helm para la aplicación.
 
 Los límites 1–2 no instalan Cluster Autoscaler ni Karpenter. El grupo empieza con
@@ -52,11 +53,35 @@ No guardar claves en archivos Terraform. El acceso administrativo se asigna a
 la identidad con la que se ejecuta Terraform; es recomendable usar un usuario o
 rol IAM destinado a administrar el cluster y revisar su ARN en el plan.
 
-Tras ajustar el grupo, `validate` finalizó correctamente y `plan` propuso
-**2 altas, 0 cambios y 1 eliminación**: reemplazar el node group en estado
-`CREATE_FAILED` y crear el add-on CoreDNS pendiente. No propone cambios en VPC
-ni otros recursos. Regenerar el plan antes de desplegar: refleja el estado de
-AWS al momento de ejecutarlo y no garantiza capacidad ni elegibilidad Free Tier.
+Tras agregar EBS CSI, `validate` finalizó correctamente y `plan` propuso
+**5 altas, 0 cambios y 0 eliminaciones**. Regenerar el plan antes de desplegar:
+refleja el estado de AWS al momento de ejecutarlo.
+
+## EBS CSI y Pod Identity
+
+`ebs-csi.tf` configura los add-ons `eks-pod-identity-agent` y
+`aws-ebs-csi-driver`, seleccionando sus versiones más recientes compatibles con
+la versión Kubernetes del cluster mediante la API de EKS.
+
+El rol `usn-cluster-ebs-csi` tiene la política administrada
+`AmazonEBSCSIDriverPolicyV2`. La asociación Pod Identity vincula ese rol con
+`kube-system/ebs-csi-controller-sa`. Su confianza queda limitada a la cuenta,
+al cluster y a ese namespace y ServiceAccount. No se usan claves estáticas ni
+se añaden permisos EBS al rol de los nodos. La política existente
+`AmazonEKSWorkerNodePolicy` permite al agente obtener credenciales Pod Identity.
+
+Terraform ordena la creación del agente y los permisos antes de la asociación,
+y de la asociación antes del driver. El plan añade esos cinco recursos sin
+modificar VPC, subnets ni Managed Node Group.
+
+El driver habilita el provisioner `ebs.csi.aws.com`; este cambio no crea PVCs,
+StorageClasses ni volúmenes EBS. Una StorageClass y un PVC posteriores podrán
+aprovisionar almacenamiento. Para volúmenes cifrados con una clave KMS propia
+se requieren permisos adicionales sobre esa clave; no se añaden en esta etapa.
+
+Referencias: [EBS CSI en EKS](https://docs.aws.amazon.com/eks/latest/userguide/ebs-csi.html),
+[confianza de Pod Identity](https://docs.aws.amazon.com/eks/latest/userguide/pod-id-role.html),
+[política V2](https://docs.aws.amazon.com/aws-managed-policy/latest/reference/AmazonEBSCSIDriverPolicyV2.html).
 
 El estado es local. `.terraform/`, estados y planes están ignorados por Git;
 conservar `.terraform.lock.hcl`. `terraform.tfvars` contiene solo valores no
