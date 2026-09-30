@@ -27,7 +27,7 @@ services:
       SPRING_DATASOURCE_USERNAME: root
       SPRING_DATASOURCE_PASSWORD: admin
     ports:
-      - "5000:5000"
+      - "5001:5000"
     depends_on:
       mysql:
         condition: service_healthy
@@ -51,12 +51,14 @@ services:
   frontend:
     build:
       context: ./client
+      args:
+        REACT_APP_API_URL: http://localhost:5001
+        REACT_APP_PUBLIC_FOLDER: http://localhost:5001/images/
+        REACT_APP_SOCKET_URL: http://localhost:8800
     container_name: social_frontend
     restart: always
     ports:
       - "3000:3000"
-    environment:
-      REACT_APP_SOCKET_URL: http://localhost:8800
     depends_on:
       - backend
       - socket
