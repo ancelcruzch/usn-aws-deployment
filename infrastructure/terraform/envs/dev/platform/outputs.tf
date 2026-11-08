@@ -32,8 +32,13 @@ output "managed_node_group_name" {
   value       = module.cluster.node_group_name
 }
 
+output "app_namespace" {
+  description = "Namespace de la aplicación (creado por Terraform)."
+  value       = kubernetes_namespace_v1.app.metadata[0].name
+}
+
 output "configure_kubectl" {
-  description = "Comando a ejecutar después del despliegue para configurar kubectl."
+  description = "Comando para configurar kubectl."
   value       = "aws eks update-kubeconfig --region ${var.aws_region} --name ${module.cluster.cluster_name}"
 }
 
@@ -51,43 +56,9 @@ output "db_jdbc_url" {
   value       = module.database.jdbc_url
 }
 
-output "db_secret_arn" {
-  description = "Secreto de Secrets Manager con usuario, contraseña y endpoint de la base."
-  value       = module.database.secret_arn
-}
-
 output "db_secret_name" {
-  description = "Nombre del secreto (variable DB_SECRET_ID del repositorio)."
+  description = "Secreto con usuario, contraseña y endpoint (variable DB_SECRET_ID del repositorio)."
   value       = module.database.secret_name
-}
-
-################################################################################
-# Registro de imágenes y CI/CD
-################################################################################
-
-output "ecr_registry" {
-  description = "Host del registro ECR (para docker login y nombres de imagen)."
-  value       = "${var.aws_account_id}.dkr.ecr.${var.aws_region}.amazonaws.com"
-}
-
-output "ecr_repository_urls" {
-  description = "URL de cada repositorio ECR."
-  value       = module.registry.repository_urls
-}
-
-output "github_cd_principal_arn" {
-  description = "Identidad IAM que usa GitHub Actions (usuario o rol)."
-  value       = module.cicd.principal_arn
-}
-
-output "github_cd_user_name" {
-  description = "Usuario IAM del pipeline; crear su access key con: aws iam create-access-key --user-name <este valor>."
-  value       = module.cicd.user_name
-}
-
-output "github_cd_role_arn" {
-  description = "Rol OIDC (solo con github_auth_mode = oidc; variable AWS_ROLE_ARN del repositorio)."
-  value       = module.cicd.role_arn
 }
 
 ################################################################################

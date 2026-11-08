@@ -32,51 +32,66 @@ S3: estado remoto de Terraform.
 ## Estructura
 
 Cada componente de la arquitectura es un **módulo** con sus entradas
-(`variables.tf`) y salidas (`outputs.tf`). El **ambiente** `envs/dev` los
-compone y es el único lugar con provider, backend y valores concretos.
+(`variables.tf`) y salidas (`outputs.tf`). El ambiente `envs/dev` los compone
+en **dos capas** con estados separados, según su ciclo de vida y su costo:
+
+| Capa | Contenido | Ciclo de vida | Costo |
+| --- | --- | --- | --- |
+| `envs/dev/base` | ECR, identidad de GitHub Actions, presupuesto | Se crea **una vez** y se conserva | ~0 USD |
+| `envs/dev/platform` | Red y NAT, EKS y nodos, RDS, monitoreo, namespace `usn` | Se **crea y destruye** en cada sesión | ~0.35 USD/h |
 
 ```text
 infrastructure/terraform/
 ├── bootstrap/            Bucket S3 del estado remoto (una vez por cuenta)
 ├── envs/
-│   └── dev/              Ambiente dev: aquí se ejecuta terraform
-│       ├── main.tf           Conecta los módulos
-│       ├── variables.tf      Parámetros del ambiente
-│       ├── terraform.tfvars  Valores de dev (sin secretos)
-│       ├── outputs.tf        Datos para kubectl, CI/CD y monitoreo
-│       ├── provider.tf       Región, cuenta permitida, etiquetas
-│       ├── backend.tf        Estado remoto en S3 (backend.hcl.example)
-│       ├── versions.tf       Versiones de Terraform y providers
-│       └── moved.tf          Migración de la estructura anterior
+│   └── dev/
+│       ├── base/         Capa permanente: registry, cicd, budget
+│       └── platform/     Capa temporal: network, cluster, database, observability
+│                         (lee la identidad del pipeline del estado de base)
 ├── modules/
 │   ├── network/          VPC, subnets públicas/privadas, NAT Gateway
-│   ├── cluster/          EKS, node group, add-ons (EBS CSI, metrics-server, CloudWatch)
+│   ├── cluster/          EKS, node group, add-ons y acceso del pipeline al namespace
 │   ├── database/         RDS MySQL, security group, contraseña y Secrets Manager
+│   ├── observability/    Dashboard, alarmas y SNS
 │   ├── registry/         Repositorios ECR
-│   ├── cicd/             Identidad de GitHub Actions (usuario IAM u OIDC) y su acceso al cluster
-│   └── observability/    Dashboard, alarmas, SNS y presupuesto
+│   ├── cicd/             Identidad de GitHub Actions (usuario IAM u OIDC)
+│   └── budget/           Presupuesto mensual
 └── .tflint.hcl           Reglas de análisis estático
 ```
 
+Cada capa tiene `main.tf` (compone los módulos), `variables.tf`,
+`terraform.tfvars` (valores sin secretos), `outputs.tf`, `provider.tf`,
+`backend.tf` (su archivo de estado en S3) y `versions.tf`.
+
 **Dependencias entre módulos:**
 
-| Módulo | Recibe de | Entrega a |
-| --- | --- | --- |
-| `network` | — | VPC y subnets → `cluster`, `database` |
-| `cluster` | `network` | security group → `database`; nombre y ARN → `cicd`, `observability` |
-| `database` | `network`, `cluster` | ARN del secreto → `cicd`; identificador → `observability` |
-| `registry` | — | ARNs de repositorios → `cicd` |
-| `cicd` | `cluster`, `database`, `registry` | Usuario o rol del pipeline (output para GitHub) |
-| `observability` | `cluster`, `database` | URL del dashboard |
+| Módulo | Capa | Recibe de | Entrega a |
+| --- | --- | --- | --- |
+| `registry` | base | — | ARNs de repositorios → `cicd` |
+| `cicd` | base | `registry` | Identidad del pipeline → `cluster` (vía estado remoto) |
+| `budget` | base | — | — |
+| `network` | platform | — | VPC y subnets → `cluster`, `database` |
+| `cluster` | platform | `network`, identidad de `cicd` | security group → `database`; nombre → `observability` |
+| `database` | platform | `network`, `cluster` | identificador → `observability` |
+| `observability` | platform | `cluster`, `database` | URL del dashboard |
 
-Para agregar otro ambiente (por ejemplo `envs/prod`) se copia `envs/dev` y
-se cambian `terraform.tfvars` y la `key` del backend. Los módulos no se tocan.
+Los permisos del pipeline (módulo `cicd`) se definen sobre los **nombres fijos**
+del cluster (`usn-cluster`) y del secreto (`usn-cluster/dev/mysql`), así que
+siguen siendo válidos cada vez que la capa platform se recrea.
+
+Para agregar otro ambiente (por ejemplo `envs/prod`) se copian las dos capas y
+se cambian `terraform.tfvars` y la `key` de cada `backend.tf`. Los módulos no se tocan.
 
 ## Decisiones de diseño
 
 - **Módulos por componente**: la estructura del código coincide con la
   arquitectura. Cada módulo se entiende y se revisa por separado y se puede
   reutilizar en otros ambientes.
+- **Dos capas con estados separados**: lo que cobra por hora (EKS, nodos, NAT,
+  RDS) se destruye al terminar cada sesión sin afectar lo permanente. Las
+  imágenes de ECR se conservan y la clave de GitHub Actions no cambia, así que
+  recrear el entorno no requiere pasos manuales. El namespace `usn` lo crea
+  Terraform, y el Secret de la base lo crea el pipeline de CD.
 - **Workers privados y NAT único**: los nodos no tienen IP pública. Un solo NAT
   reduce el costo fijo a cambio de no tener salida redundante entre AZs, lo que
   es aceptable en un entorno académico.
@@ -138,9 +153,9 @@ se cambian `terraform.tfvars` y la `key` del backend. Los módulos no se tocan.
   necesita para Pod Identity.
 - Sesión iniciada con `aws login` (verificar con `aws sts get-caller-identity`).
 
-## 1. Crear el entorno
+## 1. Preparación (una sola vez)
 
-### 1.1 Bucket de estado (una sola vez por cuenta)
+### 1.1 Bucket de estado
 
 ```bash
 cd infrastructure/terraform/bootstrap
@@ -148,92 +163,21 @@ terraform init
 terraform apply
 ```
 
-### 1.2 Infraestructura
+### 1.2 Capa base
 
 ```bash
-cd ../envs/dev
-cp backend.hcl.example backend.hcl   # ajustar bucket con el output state_bucket
-terraform init -backend-config=backend.hcl
-terraform validate
-terraform plan -out=tfplan
-terraform apply tfplan
+cd ../envs/dev/base
+terraform init
+terraform apply
 ```
 
-A partir de aquí, todos los comandos `terraform` se ejecutan desde
-`infrastructure/terraform/envs/dev`. La creación tarda unos 15–20 minutos.
-Después se configura kubectl:
+Crea los repositorios ECR, el usuario IAM `usn-cluster-github-cd` y el
+presupuesto. No genera costo por hora.
 
-```bash
-$(terraform output -raw configure_kubectl)
-kubectl get nodes
-kubectl get pods -n kube-system          # metrics-server, ebs-csi, coredns
-kubectl get pods -n amazon-cloudwatch    # cloudwatch-agent, fluent-bit
-kubectl top nodes                        # confirma que metrics-server funciona
-```
+### 1.3 Conectar GitHub Actions
 
-**Casos especiales:**
-
-- *Ya se había aplicado la versión anterior* (archivos en la raíz de
-  `infrastructure/terraform`): el estado local está en esa carpeta. Hay que
-  copiar `terraform.tfstate` a `envs/dev/` y ejecutar
-  `terraform init -backend-config=backend.hcl -migrate-state`. Los bloques de
-  `moved.tf` hacen que el plan muestre los recursos como **movidos**, no como
-  recreados. Revisar el plan antes de aplicar.
-- *Los repositorios ECR ya existen* (creados a mano): importarlos antes del apply.
-
-  ```bash
-  for r in usn-backend usn-frontend usn-socket usn-ai-service; do
-    terraform import "module.registry.aws_ecr_repository.app[\"$r\"]" "$r"
-  done
-  ```
-
-  Los tags existentes (`v1`, `v2`) se mantienen. La inmutabilidad solo impide
-  sobrescribirlos.
-- *Con `github_auth_mode = "oidc"` y el proveedor OIDC de GitHub ya creado en la
-  cuenta*: usar `create_github_oidc_provider = false`.
-
-### 1.3 Namespace de la aplicación (una vez, como administrador)
-
-El rol de CD solo tiene permisos en el namespace `usn`. El Namespace es un
-recurso de alcance cluster, así que lo crea el administrador una vez:
-
-```bash
-kubectl create namespace usn
-```
-
-### 1.4 Conexión del backend con RDS
-
-La aplicación ya no necesita el StatefulSet de MySQL, su PVC ni la StorageClass.
-El backend recibe la conexión por variables de entorno desde un Secret:
-
-```bash
-SECRET=$(aws secretsmanager get-secret-value \
-  --secret-id "$(terraform output -raw db_secret_name)" \
-  --query SecretString --output text)
-
-kubectl -n usn create secret generic db-credentials \
-  --from-literal=SPRING_DATASOURCE_URL="$(echo "$SECRET" | jq -r .jdbc_url)" \
-  --from-literal=SPRING_DATASOURCE_USERNAME="$(echo "$SECRET" | jq -r .username)" \
-  --from-literal=SPRING_DATASOURCE_PASSWORD="$(echo "$SECRET" | jq -r .password)" \
-  --dry-run=client -o yaml | kubectl apply -f -
-```
-
-El pipeline de CD ejecuta estos mismos pasos en cada despliegue. En el
-Deployment del backend se usa `envFrom: [{secretRef: {name: db-credentials}}]`.
-La base `railway` la crea RDS vacía; las tablas las genera Hibernate
-(`ddl-auto: update`) al iniciar el backend.
-
-Para conectarse a la base manualmente (está en subnets privadas):
-
-```bash
-kubectl -n usn run mysql-client --rm -it --image=mysql:8.0 --restart=Never -- \
-  mysql -h "$(terraform output -raw db_endpoint)" -u usn -p railway
-```
-
-### 1.5 Conectar GitHub Actions
-
-Crear la access key del usuario del pipeline (una vez) y copiarla directo a
-GitHub. **No guardarla en archivos ni en el repositorio:**
+Crear la access key del usuario del pipeline y copiarla **directo a GitHub**.
+No guardarla en archivos, en el repositorio ni en chats:
 
 ```bash
 aws iam create-access-key --user-name "$(terraform output -raw github_cd_user_name)"
@@ -246,69 +190,117 @@ En GitHub → *Settings → Secrets and variables → Actions*:
 | Secret | `AWS_ACCESS_KEY_ID` | `AccessKeyId` del comando anterior |
 | Secret | `AWS_SECRET_ACCESS_KEY` | `SecretAccessKey` del comando anterior |
 | Variable | `AWS_REGION` | `us-east-2` |
-| Variable | `EKS_CLUSTER_NAME` | `terraform output -raw cluster_name` |
+| Variable | `EKS_CLUSTER_NAME` | `usn-cluster` |
 | Variable | `ECR_REGISTRY` | `terraform output -raw ecr_registry` |
-| Variable | `DB_SECRET_ID` | `terraform output -raw db_secret_name` |
+| Variable | `DB_SECRET_ID` | `usn-cluster/dev/mysql` |
+| Variable | `K8S_NAMESPACE` | `usn` |
 
-El workflow de CD usa `aws-actions/configure-aws-credentials` con
-`aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}` y
-`aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}`.
+Como la capa base no se destruye, **esto se hace una sola vez**.
 
-**Rotación**: si la clave se expone, o al terminar el curso, eliminarla con
-`aws iam delete-access-key --user-name usn-cluster-github-cd --access-key-id <id>`
-y crear otra. `terraform destroy` elimina el usuario y todas sus claves.
+**Rotación**: si la clave se expone, eliminarla con
+`aws iam delete-access-key --user-name usn-cluster-github-cd --access-key-id <id>`,
+crear otra y actualizar los dos Secrets.
 
-## 2. Actualizar el entorno
+**Casos especiales:**
 
-1. Cambiar el código de un módulo o los parámetros (`envs/dev/terraform.tfvars`)
-   en una rama.
-2. Abrir un Pull Request. El workflow **Terraform CI**
-   (`.github/workflows/terraform-ci.yml`) ejecuta `fmt` y `tflint` sobre todo el
-   código, `validate` sobre `envs/dev` y `bootstrap`, y `checkov`, cuyo reporte
-   se publica.
-3. Revisar el plan localmente: `terraform plan -out=tfplan`.
-4. Después del merge: `terraform apply tfplan`.
+- *Con `github_auth_mode = "oidc"` y el proveedor OIDC de GitHub ya creado en la
+  cuenta*: usar `create_github_oidc_provider = false`.
+- *Repositorios ECR creados a mano*: importarlos antes del apply de base, uno
+  por repositorio, con
+  `terraform import 'module.registry.aws_ecr_repository.app["usn-backend"]' usn-backend`.
 
-Ejemplos de parámetros: `node_instance_types`, `node_min_size`/`node_max_size`,
-`kubernetes_version`, `db_instance_class`, `alert_emails` y `monthly_budget_usd`.
-Los cambios de `db_instance_class` reinician la base unos minutos. Al subir
-`kubernetes_version` hay que revisar antes la compatibilidad de kubectl y de los
-add-ons.
+## 2. Sesión de trabajo: crear y destruir la capa platform
 
-## 3. Destruir el entorno
-
-Kubernetes crea balanceadores y volúmenes EBS **fuera de Terraform**. Si siguen
-existiendo, `terraform destroy` falla al borrar la VPC o deja recursos cobrando.
-Seguir este orden:
+### 2.1 Crear (unos 20 minutos; desde aquí se cobra)
 
 ```bash
-# 1. Eliminar la aplicación (Services LoadBalancer/Ingress, PVCs)
-kubectl delete namespace usn --wait=true
-
-# 2. Confirmar que no quedan balanceadores del cluster
-aws elbv2 describe-load-balancers --query "LoadBalancers[].LoadBalancerName"
-aws elb describe-load-balancers --query "LoadBalancerDescriptions[].LoadBalancerName"
-
-# 3. Volúmenes EBS de PVCs con política Retain (si se usaron)
-aws ec2 describe-volumes --filters Name=status,Values=available \
-  --query "Volumes[].{id:VolumeId,size:Size,tags:Tags}"
-aws ec2 delete-volume --volume-id <vol-id>      # solo si ya no se necesitan los datos
-
-# 4. Destruir la infraestructura (desde envs/dev)
-terraform destroy
-
-# 5. Al cerrar el proyecto: eliminar el bucket de estado
-cd ../../bootstrap && terraform destroy
+cd infrastructure/terraform/envs/dev/platform
+terraform init
+terraform plan -out=tfplan
+terraform apply tfplan
 ```
 
-Los repositorios ECR se borran aunque tengan imágenes (`force_delete`). Los log
-groups, el dashboard y el secreto también se eliminan.
+Crea red, NAT, EKS con sus nodos y add-ons, RDS, el monitoreo y el namespace
+`usn`, y da acceso al pipeline dentro de ese namespace. Después:
 
-**La base de datos RDS se elimina junto con sus datos y backups automáticos**
-(`db_skip_final_snapshot = true`). Para conservar los datos se pone
+```bash
+aws eks update-kubeconfig --region us-east-2 --name usn-cluster
+kubectl get nodes                        # 2 nodos Ready
+kubectl get pods -n kube-system          # metrics-server, ebs-csi, coredns
+kubectl get pods -n amazon-cloudwatch    # cloudwatch-agent, fluent-bit
+kubectl top nodes                        # confirma que metrics-server funciona
+```
+
+Para probar la conexión del pipeline: GitHub → *Actions → AWS connection check
+→ Run workflow*.
+
+### 2.2 Conexión del backend con RDS
+
+La aplicación no necesita el StatefulSet de MySQL, su PVC ni la StorageClass.
+El backend recibe la conexión desde el Secret `db-credentials`
+(`envFrom: [{secretRef: {name: db-credentials}}]`), con las claves
+`SPRING_DATASOURCE_URL`, `SPRING_DATASOURCE_USERNAME` y
+`SPRING_DATASOURCE_PASSWORD`. Lo crea el **pipeline de CD** en cada despliegue
+leyendo Secrets Manager. Para crearlo a mano (PowerShell):
+
+```powershell
+$db = aws secretsmanager get-secret-value --secret-id usn-cluster/dev/mysql --query SecretString --output text | ConvertFrom-Json
+kubectl -n usn create secret generic db-credentials --from-literal=SPRING_DATASOURCE_URL="$($db.jdbc_url)" --from-literal=SPRING_DATASOURCE_USERNAME="$($db.username)" --from-literal=SPRING_DATASOURCE_PASSWORD="$($db.password)"
+Remove-Variable db
+```
+
+La base `railway` la crea RDS vacía; las tablas las genera Hibernate
+(`ddl-auto: update`) al iniciar el backend. Para conectarse manualmente:
+
+```bash
+kubectl -n usn run mysql-client --rm -it --image=mysql:8.0 --restart=Never -- \
+  mysql -h "$(terraform output -raw db_endpoint)" -u usn -p railway
+```
+
+### 2.3 Destruir al terminar (unos 15 minutos)
+
+```bash
+cd infrastructure/terraform/envs/dev/platform
+terraform destroy
+```
+
+Terraform elimina primero el namespace `usn`. Kubernetes borra sus Services y,
+con ellos, los balanceadores de carga antes de que se elimine la VPC.
+Comprobar después que no quedó nada cobrando:
+
+```bash
+aws eks list-clusters --region us-east-2
+aws ec2 describe-nat-gateways --region us-east-2 --filter Name=state,Values=available
+aws elbv2 describe-load-balancers --region us-east-2 --query "LoadBalancers[].LoadBalancerName"
+aws elb describe-load-balancers --region us-east-2 --query "LoadBalancerDescriptions[].LoadBalancerName"
+aws ec2 describe-volumes --region us-east-2 --query "Volumes[].VolumeId"
+```
+
+**La base de datos RDS se elimina junto con sus datos**
+(`db_skip_final_snapshot = true`). Para conservarlos, poner
 `db_skip_final_snapshot = false` antes del destroy. Terraform crea entonces el
-snapshot `usn-cluster-mysql-final`, que sigue cobrando almacenamiento hasta que
-se borra.
+snapshot `usn-cluster-mysql-final`, que cobra almacenamiento hasta que se borra.
+
+## 3. Actualizar y cerrar
+
+**Actualizar:** cambiar el código de un módulo o los parámetros
+(`terraform.tfvars` de la capa) en una rama y abrir un Pull Request. El
+workflow **Terraform CI** ejecuta `fmt` y `tflint` sobre todo el código,
+`validate` sobre `base`, `platform` y `bootstrap`, y `checkov`, cuyo reporte
+se publica. Después del merge: `terraform plan -out=tfplan` y
+`terraform apply tfplan` en la capa correspondiente.
+
+Ejemplos de parámetros: `node_instance_types`, `node_min_size`/`node_max_size`,
+`kubernetes_version`, `db_instance_class` y `alert_emails` (platform);
+`monthly_budget_usd` y `ecr_keep_last_images` (base).
+
+**Cerrar el proyecto** (al terminar el curso), en este orden:
+
+```bash
+cd infrastructure/terraform/envs/dev/platform && terraform destroy   # si existe
+cd ../base && terraform destroy                                      # ECR, usuario IAM, presupuesto
+cd ../../../bootstrap && terraform destroy                           # bucket de estado
+```
 
 ## 4. Costos y control de consumo
 
@@ -318,12 +310,13 @@ secreto), NAT Gateway y su IPv4 pública, balanceadores creados por
 Kubernetes, CloudWatch (métricas de Container Insights y logs), KMS y tráfico.
 El NAT, el control plane y RDS cobran aunque no haya aplicaciones desplegadas.
 
-- El módulo `observability` crea un presupuesto mensual
-  (`monthly_budget_usd`, por defecto 50 USD). Con `alert_emails` se avisa al
+- El módulo `budget` (capa base) crea un presupuesto mensual
+  (`monthly_budget_usd`, 100 USD). Con `alert_emails` se avisa al
   50 %, 80 % y 100 % del gasto real y al 100 % del pronosticado.
 - Revisar el consumo en *Billing → Cost Explorer* filtrando por la etiqueta
   `Project = usn` (todas las etiquetas se aplican mediante `default_tags`).
-- **Destruir el entorno (sección 3) cuando no se esté usando.**
+- **Destruir la capa platform (sección 2.3) cuando no se esté usando.** La
+  capa base cuesta centavos al mes (almacenamiento de imágenes en ECR).
 
 Referencias: [precios EKS](https://aws.amazon.com/eks/pricing/),
 [EC2](https://aws.amazon.com/ec2/pricing/on-demand/),

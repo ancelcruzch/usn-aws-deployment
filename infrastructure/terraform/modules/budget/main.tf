@@ -2,7 +2,7 @@
 # Sin correos configurados el presupuesto existe igual y se puede revisar en
 # AWS Billing > Budgets.
 resource "aws_budgets_budget" "monthly" {
-  name         = "${var.cluster_name}-monthly"
+  name         = "${var.name}-monthly"
   budget_type  = "COST"
   limit_amount = tostring(var.monthly_budget_usd)
   limit_unit   = "USD"

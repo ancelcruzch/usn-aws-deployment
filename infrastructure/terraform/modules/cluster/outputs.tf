@@ -27,3 +27,8 @@ output "application_log_group" {
   description = "Log group con los logs de los contenedores (Fluent Bit)."
   value       = aws_cloudwatch_log_group.container_insights["application"].name
 }
+
+output "cluster_certificate_authority_data" {
+  description = "Certificado de la CA del cluster (base64), para configurar el provider kubernetes."
+  value       = module.eks.cluster_certificate_authority_data
+}

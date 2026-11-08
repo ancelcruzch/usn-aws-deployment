@@ -23,7 +23,24 @@ module "eks" {
   # del proyecto bloquea la creación de proveedores OIDC de IAM.
   enable_irsa = false
 
-  # El acceso del rol de CI/CD al cluster se define en el módulo cicd.
+  # Identidad del pipeline de CD (usuario o rol de la capa base): solo puede
+  # administrar el namespace de la aplicación (AmazonEKSAdminPolicy con alcance
+  # de namespace). Recursos de alcance cluster quedan fuera de su alcance.
+  access_entries = var.app_deployer_arn == null ? {} : {
+    app-deployer = {
+      principal_arn = var.app_deployer_arn
+
+      policy_associations = {
+        app-namespace-admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy"
+          access_scope = {
+            type       = "namespace"
+            namespaces = [var.app_namespace]
+          }
+        }
+      }
+    }
+  }
 
   vpc_id                   = var.vpc_id
   subnet_ids               = var.subnet_ids

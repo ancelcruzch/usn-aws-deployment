@@ -1,14 +1,25 @@
-# Ambiente dev: compone los módulos de la plataforma.
+# Capa PLATFORM del ambiente dev: todo lo que genera costo por hora.
+# Se crea al empezar a trabajar y se destruye al terminar (terraform destroy).
 #
 #   network ──► cluster ──► database
-#      │           │            │
-#      │           ├────────────┼──► cicd  (GitHub Actions: ECR + EKS + secreto BD)
-#      │           │            │
-#      │           └────────────┴──► observability (dashboard, alarmas, budget)
-#   registry ──────────────────────► cicd
+#                  │            │
+#                  └────────────┴──► observability (dashboard, alarmas)
+#
+# Depende de la capa base (ECR, identidad de GitHub Actions), que debe existir.
+
+# Identidad del pipeline de CD creada por la capa base.
+data "terraform_remote_state" "base" {
+  backend = "s3"
+
+  config = {
+    bucket = "usn-tfstate-${var.aws_account_id}"
+    key    = "eks/${var.environment}/base.tfstate"
+    region = var.aws_region
+  }
+}
 
 module "network" {
-  source = "../../modules/network"
+  source = "../../../modules/network"
 
   environment          = var.environment
   cluster_name         = var.cluster_name
@@ -18,7 +29,7 @@ module "network" {
 }
 
 module "cluster" {
-  source = "../../modules/cluster"
+  source = "../../../modules/cluster"
 
   cluster_name                 = var.cluster_name
   environment                  = var.environment
@@ -34,11 +45,14 @@ module "cluster" {
   node_max_size       = var.node_max_size
   node_disk_size      = var.node_disk_size
 
+  app_namespace    = var.app_namespace
+  app_deployer_arn = data.terraform_remote_state.base.outputs.github_cd_principal_arn
+
   log_retention_days = var.log_retention_days
 }
 
 module "database" {
-  source = "../../modules/database"
+  source = "../../../modules/database"
 
   name        = var.cluster_name
   environment = var.environment
@@ -60,38 +74,29 @@ module "database" {
   log_retention_days = var.log_retention_days
 }
 
-module "registry" {
-  source = "../../modules/registry"
-
-  repositories     = var.ecr_repositories
-  keep_last_images = var.ecr_keep_last_images
-}
-
-module "cicd" {
-  source = "../../modules/cicd"
-
-  name                 = var.cluster_name
-  auth_mode            = var.github_auth_mode
-  github_repository    = var.github_repository
-  deploy_branch        = var.github_deploy_branch
-  create_oidc_provider = var.create_github_oidc_provider
-
-  ecr_repository_arns = module.registry.repository_arns
-  cluster_name        = module.cluster.cluster_name
-  cluster_arn         = module.cluster.cluster_arn
-  app_namespace       = var.app_namespace
-  db_secret_arn       = module.database.secret_arn
-}
-
 module "observability" {
-  source = "../../modules/observability"
+  source = "../../../modules/observability"
 
   aws_region            = var.aws_region
   cluster_name          = module.cluster.cluster_name
   app_namespace         = var.app_namespace
   application_log_group = module.cluster.application_log_group
   db_identifier         = module.database.identifier
+  alert_emails          = var.alert_emails
+}
 
-  alert_emails       = var.alert_emails
-  monthly_budget_usd = var.monthly_budget_usd
+# Namespace de la aplicación: lo crea Terraform para que el pipeline de CD
+# (con permisos solo dentro de él) pueda desplegar sin pasos manuales.
+# Al destruir se elimina primero: Kubernetes borra sus Services y con ellos
+# los balanceadores de carga, antes de que se borre la VPC.
+resource "kubernetes_namespace_v1" "app" {
+  metadata {
+    name = var.app_namespace
+
+    labels = {
+      "app.kubernetes.io/part-of" = "usn"
+    }
+  }
+
+  depends_on = [module.cluster]
 }

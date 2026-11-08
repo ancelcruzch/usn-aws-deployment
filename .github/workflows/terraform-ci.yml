@@ -58,8 +58,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Los módulos se validan a través del ambiente que los compone.
-        dir: ["envs/dev", "bootstrap"]
+        # Los módulos se validan a través de las capas que los componen.
+        dir: ["envs/dev/base", "envs/dev/platform", "bootstrap"]
     defaults:
       run:
         working-directory: ${{ env.TF_DIR }}/${{ matrix.dir }}

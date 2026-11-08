@@ -24,11 +24,6 @@ variable "db_identifier" {
 }
 
 variable "alert_emails" {
-  description = "Correos para alarmas y presupuesto (vacío desactiva notificaciones)."
+  description = "Correos para alarmas (vacío desactiva notificaciones)."
   type        = list(string)
-}
-
-variable "monthly_budget_usd" {
-  description = "Presupuesto mensual en USD."
-  type        = number
 }

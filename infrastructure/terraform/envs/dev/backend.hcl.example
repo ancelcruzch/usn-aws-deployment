@@ -1,7 +1,0 @@
-# Copiar a backend.hcl y reemplazar el bucket por el output `state_bucket`
-# de ../../bootstrap. Uso: terraform init -backend-config=backend.hcl
-bucket       = "usn-tfstate-055147668929"
-key          = "eks/dev/terraform.tfstate"
-region       = "us-east-2"
-encrypt      = true
-use_lockfile = true
