@@ -1,3 +1,6 @@
+# Red del proyecto: VPC en dos AZs, subnets públicas (NAT y balanceadores) y
+# privadas (workers EKS y RDS), con un único NAT Gateway para reducir costo.
+
 data "aws_availability_zones" "available" {
   state = "available"
 
@@ -12,11 +15,11 @@ module "vpc" {
   version = "6.7.3"
 
   name = "usn-${var.environment}-vpc"
-  cidr = "10.0.0.0/16"
+  cidr = var.vpc_cidr
 
-  azs             = slice(sort(data.aws_availability_zones.available.names), 0, 2)
-  private_subnets = ["10.0.1.0/24", "10.0.2.0/24"]
-  public_subnets  = ["10.0.101.0/24", "10.0.102.0/24"]
+  azs             = slice(sort(data.aws_availability_zones.available.names), 0, length(var.private_subnet_cidrs))
+  private_subnets = var.private_subnet_cidrs
+  public_subnets  = var.public_subnet_cidrs
 
   enable_dns_support   = true
   enable_dns_hostnames = true

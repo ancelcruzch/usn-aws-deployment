@@ -30,3 +30,6 @@ override.tf.json
 *.key
 credentials
 secrets.*
+
+# Configuración local del backend (se genera desde backend.hcl.example).
+backend.hcl

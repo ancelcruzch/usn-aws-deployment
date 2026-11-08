@@ -1,4 +1,4 @@
-data "aws_caller_identity" "ebs_csi" {}
+data "aws_caller_identity" "current" {}
 
 data "aws_iam_policy" "ebs_csi" {
   name = "AmazonEBSCSIDriverPolicyV2"
@@ -38,7 +38,7 @@ resource "aws_iam_role" "ebs_csi" {
       Action = ["sts:AssumeRole", "sts:TagSession"]
       Condition = {
         StringEquals = {
-          "aws:SourceAccount"                         = data.aws_caller_identity.ebs_csi.account_id
+          "aws:SourceAccount"                         = data.aws_caller_identity.current.account_id
           "aws:RequestTag/kubernetes-namespace"       = "kube-system"
           "aws:RequestTag/kubernetes-service-account" = "ebs-csi-controller-sa"
         }
