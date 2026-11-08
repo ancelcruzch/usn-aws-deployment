@@ -1,0 +1,61 @@
+# Verificación manual de la conexión GitHub Actions → AWS.
+# Comprueba que las credenciales del pipeline funcionan y que sus permisos son
+# los mínimos esperados. Solo hace consultas: no crea ni modifica recursos.
+# Ejecutar desde la pestaña Actions → "AWS connection check" → Run workflow.
+name: AWS connection check
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Credenciales, ECR, Secrets Manager y EKS
+    runs-on: ubuntu-latest
+    env:
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+      K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+      DB_SECRET_ID: ${{ vars.DB_SECRET_ID }}
+    steps:
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Identidad (debe ser usn-cluster-github-cd)
+        run: aws sts get-caller-identity --query Arn --output text
+
+      - name: Login en Amazon ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Registro ECR
+        run: echo "Registro ECR -> ${{ steps.ecr.outputs.registry }}"
+
+      - name: Lectura del secreto de la base de datos (sin mostrar su valor)
+        run: |
+          aws secretsmanager get-secret-value --secret-id "$DB_SECRET_ID" \
+            --query Name --output text
+
+      - name: Conectar kubectl al cluster
+        run: |
+          aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+          kubectl version
+
+      - name: Permisos en Kubernetes (mínimo privilegio)
+        run: |
+          echo "== Namespace $K8S_NAMESPACE (debe ser 'yes')"
+          kubectl auth can-i create deployments -n "$K8S_NAMESPACE"
+          kubectl auth can-i create secrets -n "$K8S_NAMESPACE"
+          kubectl auth can-i create horizontalpodautoscalers.autoscaling -n "$K8S_NAMESPACE"
+          echo "== kube-system y recursos de cluster (debe ser 'no')"
+          kubectl auth can-i create deployments -n kube-system || true
+          kubectl auth can-i delete nodes || true
+
+      - name: Estado del namespace de la aplicación
+        run: kubectl get all -n "$K8S_NAMESPACE"
