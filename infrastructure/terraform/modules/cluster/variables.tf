@@ -57,3 +57,14 @@ variable "log_retention_days" {
   description = "Retención de los logs del control plane y de Container Insights."
   type        = number
 }
+
+variable "app_namespace" {
+  description = "Namespace de la aplicación (alcance de los permisos del pipeline)."
+  type        = string
+}
+
+variable "app_deployer_arn" {
+  description = "ARN IAM (usuario o rol) del pipeline de CD; null para no darle acceso."
+  type        = string
+  default     = null
+}

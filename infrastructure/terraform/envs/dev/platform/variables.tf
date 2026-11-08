@@ -110,25 +110,9 @@ variable "node_disk_size" {
 }
 
 variable "app_namespace" {
-  description = "Namespace Kubernetes de la aplicación; el rol de CD solo tiene permisos dentro de él."
+  description = "Namespace Kubernetes de la aplicación (lo crea Terraform); el pipeline de CD solo tiene permisos dentro de él."
   type        = string
   default     = "usn"
-}
-
-################################################################################
-# Container registry
-################################################################################
-
-variable "ecr_repositories" {
-  description = "Repositorios ECR a crear (uno por imagen de la aplicación)."
-  type        = set(string)
-  default     = ["usn-backend", "usn-frontend", "usn-socket", "usn-ai-service"]
-}
-
-variable "ecr_keep_last_images" {
-  description = "Cantidad de imágenes que conserva cada repositorio ECR; las más antiguas se eliminan."
-  type        = number
-  default     = 15
 }
 
 ################################################################################
@@ -190,39 +174,6 @@ variable "db_skip_final_snapshot" {
 }
 
 ################################################################################
-# CI/CD (GitHub Actions)
-################################################################################
-
-variable "github_auth_mode" {
-  description = "Autenticación de GitHub Actions en AWS: iam_user (access key en GitHub Secrets) u oidc (sin claves). Esta cuenta bloquea OIDC, por eso el valor por defecto es iam_user."
-  type        = string
-  default     = "iam_user"
-}
-
-variable "github_repository" {
-  description = "Repositorio GitHub autorizado a asumir el rol de CD, en formato owner/repo."
-  type        = string
-  default     = "ancelcruzch/usn-aws-deployment"
-
-  validation {
-    condition     = can(regex("^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$", var.github_repository))
-    error_message = "Usar el formato owner/repo."
-  }
-}
-
-variable "github_deploy_branch" {
-  description = "Rama desde la cual GitHub Actions puede publicar imágenes y desplegar."
-  type        = string
-  default     = "main"
-}
-
-variable "create_github_oidc_provider" {
-  description = "Crear el proveedor OIDC de GitHub. Poner false si ya existe en la cuenta (solo puede haber uno por URL)."
-  type        = bool
-  default     = true
-}
-
-################################################################################
 # Monitoreo y costos
 ################################################################################
 
@@ -233,13 +184,7 @@ variable "log_retention_days" {
 }
 
 variable "alert_emails" {
-  description = "Correos que reciben alarmas de CloudWatch y alertas de presupuesto. Vacío desactiva las notificaciones."
+  description = "Correos que reciben las alarmas de CloudWatch. Vacío desactiva las notificaciones."
   type        = list(string)
   default     = []
-}
-
-variable "monthly_budget_usd" {
-  description = "Presupuesto mensual en USD; se alerta al 50 %, 80 % y 100 % (real) y al 100 % (pronóstico)."
-  type        = number
-  default     = 50
 }

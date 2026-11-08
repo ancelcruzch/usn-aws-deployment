@@ -33,22 +33,17 @@ variable "ecr_repository_arns" {
   type        = list(string)
 }
 
+variable "aws_region" {
+  description = "Región del cluster y del secreto."
+  type        = string
+}
+
 variable "cluster_name" {
-  description = "Cluster EKS donde se despliega."
+  description = "Nombre del cluster EKS en el que se despliega (puede no existir aún)."
   type        = string
 }
 
-variable "cluster_arn" {
-  description = "ARN del cluster (para eks:DescribeCluster)."
-  type        = string
-}
-
-variable "app_namespace" {
-  description = "Namespace Kubernetes que el rol puede administrar."
-  type        = string
-}
-
-variable "db_secret_arn" {
-  description = "Secreto de la base de datos que el pipeline puede leer."
+variable "db_secret_name" {
+  description = "Nombre del secreto de Secrets Manager con las credenciales de la base."
   type        = string
 }

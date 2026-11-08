@@ -8,6 +8,13 @@
 #    Preferible en cuentas que lo permitan.
 #
 # En ambos casos los permisos son los mismos y mínimos.
+#
+# Este módulo pertenece a la capa base (permanente): no depende del cluster ni
+# de la base de datos, que se crean y destruyen en cada sesión. Los permisos se
+# definen sobre los nombres fijos de esos recursos. El acceso dentro de
+# Kubernetes (access entry) lo crea la capa platform junto con el cluster.
+
+data "aws_caller_identity" "current" {}
 
 locals {
   use_oidc      = var.auth_mode == "oidc"
@@ -16,7 +23,7 @@ locals {
   # Permisos mínimos: push/pull en los repositorios del proyecto, lectura del
   # cluster para generar el kubeconfig y lectura del secreto de la base de
   # datos. Lo que puede hacer dentro de Kubernetes lo limita la access entry
-  # (solo el namespace de la aplicación).
+  # (solo el namespace de la aplicación), creada en la capa platform.
   cd_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [
@@ -46,13 +53,14 @@ locals {
         Sid      = "EksKubeconfig"
         Effect   = "Allow"
         Action   = "eks:DescribeCluster"
-        Resource = var.cluster_arn
+        Resource = "arn:aws:eks:${var.aws_region}:${data.aws_caller_identity.current.account_id}:cluster/${var.cluster_name}"
       },
       {
-        Sid      = "ReadDatabaseCredentials"
-        Effect   = "Allow"
-        Action   = "secretsmanager:GetSecretValue"
-        Resource = var.db_secret_arn
+        Sid    = "ReadDatabaseCredentials"
+        Effect = "Allow"
+        Action = "secretsmanager:GetSecretValue"
+        # Secrets Manager agrega un sufijo aleatorio al ARN del secreto.
+        Resource = "arn:aws:secretsmanager:${var.aws_region}:${data.aws_caller_identity.current.account_id}:secret:${var.db_secret_name}-*"
       },
     ]
   })
@@ -83,8 +91,6 @@ resource "aws_iam_user_policy" "github_cd" {
 ################################################################################
 # Modo oidc
 ################################################################################
-
-data "aws_caller_identity" "current" {}
 
 locals {
   github_oidc_provider_arn = (
@@ -132,26 +138,4 @@ resource "aws_iam_role_policy" "github_cd" {
   name   = "ecr-push-eks-describe"
   role   = aws_iam_role.github_cd[0].id
   policy = local.cd_policy
-}
-
-################################################################################
-# Acceso al cluster (ambos modos): AmazonEKSAdminPolicy limitada al namespace
-# de la aplicación. Recursos de alcance cluster (el Namespace) los crea el admin.
-################################################################################
-
-resource "aws_eks_access_entry" "github_cd" {
-  cluster_name  = var.cluster_name
-  principal_arn = local.principal_arn
-  type          = "STANDARD"
-}
-
-resource "aws_eks_access_policy_association" "github_cd" {
-  cluster_name  = var.cluster_name
-  principal_arn = aws_eks_access_entry.github_cd.principal_arn
-  policy_arn    = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSAdminPolicy"
-
-  access_scope {
-    type       = "namespace"
-    namespaces = [var.app_namespace]
-  }
 }

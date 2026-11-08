@@ -1,5 +1,6 @@
 # Observabilidad y operación: dashboard de CloudWatch (nodos, pods, RDS y
-# errores de la aplicación), alarmas y notificaciones por correo.
+# errores de la aplicación), alarmas y notificaciones por correo. El presupuesto
+# está en el módulo budget (capa base, permanente).
 # Las métricas las generan Container Insights (módulo cluster) y RDS.
 
 locals {
