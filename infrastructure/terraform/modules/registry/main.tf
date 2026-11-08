@@ -20,9 +20,10 @@ resource "aws_ecr_repository" "app" {
 
 # Conserva solo las últimas N imágenes para controlar el costo de almacenamiento.
 resource "aws_ecr_lifecycle_policy" "app" {
-  for_each = aws_ecr_repository.app
+  # Itera sobre los nombres (conocidos al planificar), no sobre los recursos.
+  for_each = var.repositories
 
-  repository = each.value.name
+  repository = aws_ecr_repository.app[each.key].name
 
   policy = jsonencode({
     rules = [{
