@@ -1,0 +1,78 @@
+# Prueba de carga manual con k6 contra la aplicación desplegada en EKS.
+# Actions → "Load test" → Run workflow. La URL se obtiene del Service frontend
+# (no hay que copiarla). El reporte HTML de k6 queda como artifact.
+name: Load test
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_vus:
+        description: Usuarios virtuales en el pico
+        default: "60"
+        required: true
+      hold:
+        description: Duración del pico (por ejemplo 4m)
+        default: "4m"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: load-test
+  cancel-in-progress: false
+
+jobs:
+  k6:
+    name: k6 (${{ inputs.max_vus }} VUs)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Obtener la URL de la aplicación
+        run: |
+          aws eks update-kubeconfig --region "${{ vars.AWS_REGION }}" --name "${{ vars.EKS_CLUSTER_NAME }}"
+          host=$(kubectl -n "${{ vars.K8S_NAMESPACE }}" get service frontend \
+                   -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')
+          [ -n "$host" ] || { echo "::error::No se encontró el Service frontend"; exit 1; }
+          echo "BASE_URL=http://$host" >> "$GITHUB_ENV"
+          echo "Objetivo: http://$host"
+
+      - name: HPA antes de la prueba
+        run: kubectl -n "${{ vars.K8S_NAMESPACE }}" get hpa
+
+      - name: Ejecutar k6
+        run: |
+          mkdir -p loadtest/results
+          docker run --rm -u "$(id -u):$(id -g)" \
+            -v "$PWD/loadtest:/work" -w /work \
+            -e BASE_URL -e MAX_VUS="${{ inputs.max_vus }}" -e HOLD="${{ inputs.hold }}" \
+            -e K6_WEB_DASHBOARD=true -e K6_WEB_DASHBOARD_EXPORT=results/k6-report.html \
+            grafana/k6:latest run --no-color k6/load-test.js
+
+      - name: HPA y pods después de la prueba
+        if: always()
+        run: |
+          {
+            echo "### Autoscaling después de la prueba"
+            echo '```'
+            kubectl -n "${{ vars.K8S_NAMESPACE }}" get hpa
+            kubectl -n "${{ vars.K8S_NAMESPACE }}" get pods
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar reporte
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: k6-report
+          path: loadtest/results/
+          if-no-files-found: warn

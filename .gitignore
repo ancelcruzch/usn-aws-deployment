@@ -49,6 +49,7 @@ coverage.xml
 
 # Reportes y temporales
 reports/
+loadtest/results/
 coverage/
 *.log
 
