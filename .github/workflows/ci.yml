@@ -47,12 +47,16 @@ jobs:
       - name: Compilar y ejecutar pruebas
         run: ./mvnw -B -ntp verify
 
+      # Solo los TEST-*.xml (formato JUnit); failsafe-summary.xml es un resumen
+      # interno de Maven. Un fallo al publicar no debe ocultar el resultado real
+      # de las pruebas (lo determina el paso anterior).
       - name: Publicar resultados de pruebas
         if: always()
+        continue-on-error: true
         uses: dorny/test-reporter@v3
         with:
           name: Resultados backend (JUnit)
-          path: backend/target/surefire-reports/*.xml,backend/target/failsafe-reports/*.xml
+          path: backend/target/surefire-reports/TEST-*.xml,backend/target/failsafe-reports/TEST-*.xml
           reporter: java-junit
           fail-on-error: false
 
@@ -115,6 +119,7 @@ jobs:
 
       - name: Publicar resultados de pruebas
         if: always()
+        continue-on-error: true
         uses: dorny/test-reporter@v3
         with:
           name: Resultados ai-service (pytest)
