@@ -38,6 +38,15 @@ crash.*.log
 .DS_Store
 Thumbs.db
 
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+.ruff_cache/
+.venv/
+.coverage
+coverage.xml
+
 # Reportes y temporales
 reports/
 coverage/
