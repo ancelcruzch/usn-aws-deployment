@@ -15,7 +15,8 @@ RUN npm ci --omit=dev --no-audit --no-fund && npm cache clean --force
 
 COPY --chown=node:node index.js ./
 
-USER node
+# Usuario "node" de la imagen base, por UID numérico (requisito de runAsNonRoot).
+USER 1000:1000
 EXPOSE 8800
 
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \

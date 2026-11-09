@@ -19,7 +19,8 @@ RUN pip install -r requirements.txt
 
 COPY --chown=app:app main.py .
 
-USER app
+# UID numérico (requisito de runAsNonRoot en Kubernetes).
+USER 10001:10001
 EXPOSE 8000
 
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \

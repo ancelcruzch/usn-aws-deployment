@@ -30,6 +30,9 @@ spec:
     spec:
       securityContext:
         runAsNonRoot: true
+        # UID/GID sin privilegios (el mismo que define el Dockerfile).
+        runAsUser: 1000
+        runAsGroup: 1000
         seccompProfile:
           type: RuntimeDefault
       containers:

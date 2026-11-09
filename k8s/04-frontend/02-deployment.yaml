@@ -36,6 +36,9 @@ spec:
               app: frontend
       securityContext:
         runAsNonRoot: true
+        # UID/GID sin privilegios (el mismo que define el Dockerfile).
+        runAsUser: 101
+        runAsGroup: 101
         seccompProfile:
           type: RuntimeDefault
       containers:
