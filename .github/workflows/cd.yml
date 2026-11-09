@@ -1,0 +1,261 @@
+# Continuous Delivery: en cada merge a main (o manualmente) construye las
+# imágenes de la aplicación, las publica en Amazon ECR con el SHA del commit y
+# actualiza los Deployments en EKS. Verifica el rollout y la disponibilidad de
+# la aplicación; si un Deployment no queda sano, revierte a la versión anterior.
+#
+# Requisitos (ver infrastructure/terraform/README.md):
+#   - Capa platform creada (cluster usn-cluster en ejecución).
+#   - Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (usuario usn-cluster-github-cd).
+#   - Variables: AWS_REGION, EKS_CLUSTER_NAME, ECR_REGISTRY, DB_SECRET_ID, K8S_NAMESPACE.
+#   - Opcionales para el build del frontend: REACT_APP_API_URL,
+#     REACT_APP_PUBLIC_FOLDER, REACT_APP_SOCKET_URL, REACT_APP_AI_URL.
+name: CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "backend/**"
+      - "client/**"
+      - "socket/**"
+      - "ai-service/**"
+      - "k8s/**"
+      - ".github/workflows/cd.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Un despliegue a la vez; uno nuevo espera a que termine el anterior.
+concurrency:
+  group: cd-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION }}
+  EKS_CLUSTER_NAME: ${{ vars.EKS_CLUSTER_NAME }}
+  ECR_REGISTRY: ${{ vars.ECR_REGISTRY }}
+  DB_SECRET_ID: ${{ vars.DB_SECRET_ID }}
+  K8S_NAMESPACE: ${{ vars.K8S_NAMESPACE }}
+
+jobs:
+  # Comprueba que el código de la aplicación y los manifiestos están en el
+  # repositorio; si aún no se integraron, el pipeline termina sin error.
+  detect:
+    name: Detectar aplicación
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.check.outputs.ready }}
+      tag: ${{ steps.check.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Verificar carpetas de la aplicación
+        id: check
+        run: |
+          missing=""
+          for d in backend client socket ai-service k8s; do
+            [ -d "$d" ] || missing="$missing $d"
+          done
+          if [ -n "$missing" ]; then
+            echo "::notice::Faltan carpetas de la aplicación:$missing. No se despliega."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "tag=sha-${GITHUB_SHA::12}" >> "$GITHUB_OUTPUT"
+
+  build-push:
+    name: Build y push (${{ matrix.service }})
+    needs: detect
+    if: needs.detect.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - service: backend
+            context: backend
+            repository: usn-backend
+          - service: frontend
+            context: client
+            repository: usn-frontend
+          - service: socket
+            context: socket
+            repository: usn-socket
+          - service: ai-service
+            context: ai-service
+            repository: usn-ai-service
+    env:
+      IMAGE: ${{ vars.ECR_REGISTRY }}/${{ matrix.repository }}:${{ needs.detect.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Login en Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Los tags de ECR son inmutables: si este commit ya se publicó (re-ejecución
+      # del workflow), se reutiliza la imagen existente.
+      - name: ¿La imagen ya existe?
+        id: exists
+        run: |
+          if aws ecr describe-images --repository-name "${{ matrix.repository }}" \
+               --image-ids imageTag="${{ needs.detect.outputs.tag }}" >/dev/null 2>&1; then
+            echo "found=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::$IMAGE ya existe; no se reconstruye."
+          else
+            echo "found=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Construir imagen
+        if: steps.exists.outputs.found == 'false'
+        run: |
+          docker build \
+            --build-arg REACT_APP_API_URL="${{ vars.REACT_APP_API_URL }}" \
+            --build-arg REACT_APP_PUBLIC_FOLDER="${{ vars.REACT_APP_PUBLIC_FOLDER }}" \
+            --build-arg REACT_APP_SOCKET_URL="${{ vars.REACT_APP_SOCKET_URL }}" \
+            --build-arg REACT_APP_AI_URL="${{ vars.REACT_APP_AI_URL }}" \
+            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
+            --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
+            -t "$IMAGE" "${{ matrix.context }}"
+
+      - name: Publicar en Amazon ECR
+        if: steps.exists.outputs.found == 'false'
+        run: docker push "$IMAGE"
+
+      - name: Resultado del escaneo de vulnerabilidades (ECR)
+        if: steps.exists.outputs.found == 'false'
+        continue-on-error: true
+        run: |
+          aws ecr wait image-scan-complete --repository-name "${{ matrix.repository }}" \
+            --image-id imageTag="${{ needs.detect.outputs.tag }}" || true
+          aws ecr describe-image-scan-findings --repository-name "${{ matrix.repository }}" \
+            --image-id imageTag="${{ needs.detect.outputs.tag }}" \
+            --query 'imageScanFindings.findingSeverityCounts' --output table || true
+
+  deploy:
+    name: Desplegar en EKS
+    needs: [detect, build-push]
+    if: needs.detect.outputs.ready == 'true'
+    runs-on: ubuntu-latest
+    env:
+      TAG: ${{ needs.detect.outputs.tag }}
+      # Carpetas de manifiestos que se aplican. MySQL ya no va en el cluster
+      # (la base es Amazon RDS); el Namespace lo crea Terraform.
+      MANIFEST_DIRS: "k8s/backend k8s/socket k8s/ai-service k8s/frontend k8s/hpa"
+      DEPLOYMENTS: "backend:usn-backend socket:usn-socket ai-service:usn-ai-service frontend:usn-frontend"
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Configurar credenciales AWS
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - name: Verificar que el cluster existe
+        run: |
+          if ! aws eks describe-cluster --name "$EKS_CLUSTER_NAME" --query cluster.status --output text; then
+            echo "::error::El cluster $EKS_CLUSTER_NAME no existe. Crear la capa platform (terraform apply en envs/dev/platform)."
+            exit 1
+          fi
+
+      - name: Conectar kubectl
+        run: aws eks update-kubeconfig --region "$AWS_REGION" --name "$EKS_CLUSTER_NAME"
+
+      # Credenciales de RDS desde Secrets Manager → Secret de Kubernetes.
+      # No se imprimen: se enmascaran en el log.
+      - name: Secret db-credentials (desde Secrets Manager)
+        run: |
+          secret=$(aws secretsmanager get-secret-value --secret-id "$DB_SECRET_ID" \
+                     --query SecretString --output text)
+          password=$(echo "$secret" | jq -r .password)
+          echo "::add-mask::$password"
+          kubectl -n "$K8S_NAMESPACE" create secret generic db-credentials \
+            --from-literal=SPRING_DATASOURCE_URL="$(echo "$secret" | jq -r .jdbc_url)" \
+            --from-literal=SPRING_DATASOURCE_USERNAME="$(echo "$secret" | jq -r .username)" \
+            --from-literal=SPRING_DATASOURCE_PASSWORD="$password" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+      # Copia los manifiestos y reemplaza cada imagen usn-* por la recién
+      # publicada (registro de esta cuenta + tag del commit).
+      - name: Preparar manifiestos con las imágenes nuevas
+        run: |
+          mkdir -p rendered
+          for d in $MANIFEST_DIRS; do
+            [ -d "$d" ] || { echo "::notice::$d no existe; se omite."; continue; }
+            mkdir -p "rendered/$d"
+            for f in "$d"/*.yaml "$d"/*.yml; do
+              [ -f "$f" ] || continue
+              sed -E "s#image:[[:space:]]*[^[:space:]]*/(usn-[a-z0-9-]+):[^[:space:]]+#image: ${ECR_REGISTRY}/\1:${TAG}#" \
+                "$f" > "rendered/$f"
+            done
+          done
+          grep -rh "image:" rendered || true
+
+      - name: Aplicar manifiestos
+        run: kubectl apply -n "$K8S_NAMESPACE" -R -f rendered/
+
+      - name: Verificar rollout
+        id: rollout
+        run: |
+          failed=""
+          for pair in $DEPLOYMENTS; do
+            dep="${pair%%:*}"
+            kubectl -n "$K8S_NAMESPACE" get deployment "$dep" >/dev/null 2>&1 || continue
+            if ! kubectl -n "$K8S_NAMESPACE" rollout status deployment/"$dep" --timeout=300s; then
+              failed="$failed $dep"
+            fi
+          done
+          echo "failed=$failed" >> "$GITHUB_OUTPUT"
+          [ -z "$failed" ] || { echo "::error::Rollout fallido:$failed"; exit 1; }
+
+      - name: Revertir Deployments fallidos
+        if: failure() && steps.rollout.outputs.failed != ''
+        run: |
+          for dep in ${{ steps.rollout.outputs.failed }}; do
+            kubectl -n "$K8S_NAMESPACE" rollout undo deployment/"$dep" || true
+            kubectl -n "$K8S_NAMESPACE" describe deployment "$dep" | tail -20 || true
+          done
+
+      - name: Comprobar disponibilidad de la aplicación
+        run: |
+          echo "Esperando la dirección del balanceador del frontend..."
+          host=""
+          for i in $(seq 1 30); do
+            host=$(kubectl -n "$K8S_NAMESPACE" get service frontend \
+                     -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>/dev/null || true)
+            [ -n "$host" ] && break
+            sleep 10
+          done
+          [ -n "$host" ] || { echo "::error::El Service frontend no obtuvo dirección pública."; exit 1; }
+          echo "URL: http://$host"
+          for i in $(seq 1 30); do
+            if curl -fsS -o /dev/null --max-time 10 "http://$host"; then
+              echo "La aplicación responde en http://$host"
+              echo "### Aplicación desplegada: http://$host" >> "$GITHUB_STEP_SUMMARY"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::La aplicación no respondió en http://$host"
+          exit 1
+
+      - name: Estado final
+        if: always()
+        run: |
+          {
+            echo "### Versión desplegada: \`$TAG\`"
+            echo '```'
+            kubectl -n "$K8S_NAMESPACE" get deployments,pods,services,hpa 2>&1 || true
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          kubectl -n "$K8S_NAMESPACE" get deployments,pods,services,hpa || true
