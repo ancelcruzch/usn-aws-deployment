@@ -7,8 +7,10 @@
 #   - Capa platform creada (cluster usn-cluster en ejecución).
 #   - Secrets: AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (usuario usn-cluster-github-cd).
 #   - Variables: AWS_REGION, EKS_CLUSTER_NAME, ECR_REGISTRY, DB_SECRET_ID, K8S_NAMESPACE.
-#   - Opcionales para el build del frontend: REACT_APP_API_URL,
-#     REACT_APP_PUBLIC_FOLDER, REACT_APP_SOCKET_URL, REACT_APP_AI_URL.
+#
+# El frontend se construye con sus valores por defecto (rutas relativas /api,
+# /socket.io, /ai que resuelve nginx), así la misma imagen sirve en cualquier
+# entorno sin recompilar.
 name: CD
 
 on:
@@ -117,11 +119,9 @@ jobs:
       - name: Construir imagen
         if: steps.exists.outputs.found == 'false'
         run: |
+          # Sin --build-arg: pasar una variable vacía anularía los valores por
+          # defecto del Dockerfile y React usaría http://localhost como API.
           docker build \
-            --build-arg REACT_APP_API_URL="${{ vars.REACT_APP_API_URL }}" \
-            --build-arg REACT_APP_PUBLIC_FOLDER="${{ vars.REACT_APP_PUBLIC_FOLDER }}" \
-            --build-arg REACT_APP_SOCKET_URL="${{ vars.REACT_APP_SOCKET_URL }}" \
-            --build-arg REACT_APP_AI_URL="${{ vars.REACT_APP_AI_URL }}" \
             --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
             --label "org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}" \
             -t "$IMAGE" "${{ matrix.context }}"
