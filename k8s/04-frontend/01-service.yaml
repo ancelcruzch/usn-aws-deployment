@@ -1,0 +1,18 @@
+# Único punto de entrada público de la aplicación: AWS crea un balanceador de
+# carga en las subnets públicas (etiquetadas por Terraform).
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend
+  namespace: usn
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: usn
+spec:
+  type: LoadBalancer
+  selector:
+    app: frontend
+  ports:
+    - name: http
+      port: 80
+      targetPort: http

@@ -1,0 +1,67 @@
+# Servidor Socket.io. Mantiene en memoria la lista de usuarios conectados, por
+# eso corre con 1 réplica: escalarlo requeriría sticky sessions y un adaptador
+# compartido (por ejemplo Redis). Si el pod falla, Kubernetes lo recrea.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: socket
+  namespace: usn
+  labels:
+    app: socket
+    app.kubernetes.io/name: socket
+    app.kubernetes.io/part-of: usn
+spec:
+  replicas: 1
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: socket
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: socket
+        app.kubernetes.io/name: socket
+        app.kubernetes.io/part-of: usn
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: socket
+          image: ECR_REGISTRY/usn-socket:IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8800
+          env:
+            - name: PORT
+              value: "8800"
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

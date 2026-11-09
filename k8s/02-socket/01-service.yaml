@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: socket
+  namespace: usn
+  labels:
+    app.kubernetes.io/name: socket
+    app.kubernetes.io/part-of: usn
+spec:
+  type: ClusterIP
+  selector:
+    app: socket
+  ports:
+    - name: http
+      port: 8800
+      targetPort: http

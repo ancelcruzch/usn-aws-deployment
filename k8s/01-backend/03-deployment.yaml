@@ -1,0 +1,99 @@
+# API REST (Spring Boot). Sin estado: las sesiones son JWT, los datos están en
+# Amazon RDS y las imágenes en Cloudinary, por lo que escala horizontalmente
+# con el HPA (k8s/hpa/backend-hpa.yaml).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: usn
+  labels:
+    app: backend
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: usn
+spec:
+  # Sin "replicas": las administra el HPA (2 a 6). Si se fijaran aquí, cada
+  # despliegue anularía el escalado del HPA.
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: backend
+  # Actualización sin cortes: primero levanta la versión nueva y solo retira una
+  # réplica vieja cuando la nueva pasa la readinessProbe.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: backend
+        app.kubernetes.io/name: backend
+        app.kubernetes.io/part-of: usn
+    spec:
+      terminationGracePeriodSeconds: 30
+      # Reparte las réplicas entre nodos: si un nodo falla, la API sigue activa.
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: backend
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          # El pipeline de CD reemplaza la imagen por <registro ECR>/usn-backend:sha-<commit>.
+          image: ECR_REGISTRY/usn-backend:IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 5000
+          envFrom:
+            - configMapRef:
+                name: backend-config
+            # SPRING_DATASOURCE_URL / USERNAME / PASSWORD de Amazon RDS
+            # (lo crea el CD desde AWS Secrets Manager).
+            - secretRef:
+                name: db-credentials
+            # CLOUDINARY_* (opcional: sin él, la subida de imágenes queda deshabilitada).
+            - secretRef:
+                name: cloudinary-credentials
+                optional: true
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 768Mi
+          # Spring Boot tarda en arrancar: hasta 3 minutos antes de evaluar liveness.
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 36
+          # Si el proceso se cuelga, Kubernetes reinicia el contenedor.
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+            timeoutSeconds: 3
+            failureThreshold: 3
+          # Solo recibe tráfico si la aplicación y la conexión a RDS están bien.
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]

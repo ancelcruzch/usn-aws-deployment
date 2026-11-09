@@ -1,0 +1,17 @@
+# Interno al cluster: solo nginx (frontend) llega al backend por /api.
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend
+  namespace: usn
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: usn
+spec:
+  type: ClusterIP
+  selector:
+    app: backend
+  ports:
+    - name: http
+      port: 5000
+      targetPort: http

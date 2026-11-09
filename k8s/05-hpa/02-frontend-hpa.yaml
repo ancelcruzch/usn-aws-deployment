@@ -1,0 +1,26 @@
+# Escalado del frontend (nginx): recibe todo el tráfico de la aplicación.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: frontend
+  namespace: usn
+  labels:
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: usn
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: frontend
+  minReplicas: 2
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    scaleDown:
+      stabilizationWindowSeconds: 120

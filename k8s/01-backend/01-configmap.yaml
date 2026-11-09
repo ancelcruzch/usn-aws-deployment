@@ -1,0 +1,16 @@
+# Configuración no sensible del backend. Las credenciales (base de datos,
+# Cloudinary) van en Secrets que crea el pipeline de CD.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: backend-config
+  namespace: usn
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: usn
+data:
+  # Heap de la JVM proporcional al límite de memoria del contenedor.
+  JAVA_TOOL_OPTIONS: "-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+  # Hibernate crea/actualiza las tablas en RDS al iniciar.
+  SPRING_JPA_HIBERNATE_DDL_AUTO: "update"
+  LOGGING_LEVEL_ROOT: "INFO"

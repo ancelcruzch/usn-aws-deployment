@@ -1,0 +1,70 @@
+# nginx: sirve la app React y reenvía /api, /socket.io y /ai a los Services
+# backend, socket y ai-service (client/nginx/default.conf).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend
+  namespace: usn
+  labels:
+    app: frontend
+    app.kubernetes.io/name: frontend
+    app.kubernetes.io/part-of: usn
+spec:
+  # Réplicas administradas por el HPA (2 a 4).
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: frontend
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: frontend
+        app.kubernetes.io/name: frontend
+        app.kubernetes.io/part-of: usn
+    spec:
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              app: frontend
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: frontend
+          image: ECR_REGISTRY/usn-frontend:IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8080
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 500m
+              memory: 128Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            periodSeconds: 5
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
