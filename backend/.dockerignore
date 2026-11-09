@@ -1,0 +1,13 @@
+# Solo pom.xml y src/ forman parte de la imagen.
+target/
+.mvn/
+mvnw
+mvnw.cmd
+.env
+.env.*
+*.log
+.idea/
+.vscode/
+*.iml
+Dockerfile
+.dockerignore

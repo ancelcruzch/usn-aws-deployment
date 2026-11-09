@@ -1,28 +1,40 @@
-# Use una imagen de Maven para construir la aplicación
-FROM maven:3.8.4-openjdk-17-slim AS build
+# syntax=docker/dockerfile:1
+# Backend Spring Boot. Build multi-stage:
+#   1) build: compila con Maven (JDK) aprovechando la caché de dependencias.
+#   2) runtime: solo JRE + el artefacto, usuario sin privilegios.
 
+############################ 1. Build ############################
+FROM maven:3.9-eclipse-temurin-17 AS build
 WORKDIR /app
 
-# Copia solo los archivos necesarios para resolver las dependencias
-COPY mvnw .
-COPY .mvn .mvn
+# Dependencias primero: esta capa solo se reconstruye si cambia pom.xml.
 COPY pom.xml .
+RUN mvn -B -q dependency:go-offline
 
-# Copia los archivos restantes y construye la aplicación
+# Código fuente (los tests se ejecutan en el pipeline de CI, no aquí).
 COPY src src
-RUN mvn clean package -DskipTests
+RUN mvn -B -q -DskipTests package \
+    && cp target/*.war /app/app.war
 
-# Imagen de producción
-FROM eclipse-temurin:17-jdk
+############################ 2. Runtime ##########################
+FROM eclipse-temurin:17-jre-alpine
 
+LABEL org.opencontainers.image.title="usn-backend" \
+      org.opencontainers.image.description="API REST de Universe Social Network (Spring Boot)"
+
+# Usuario sin privilegios: el proceso no corre como root.
+RUN addgroup -S app && adduser -S app -G app
 WORKDIR /app
 
-# Copia solo el artefacto. Las credenciales llegan como variables de entorno
-# (Secret de Kubernetes), nunca dentro de la imagen.
-COPY --from=build /app/target/backend-0.0.1-SNAPSHOT.war .
+COPY --from=build --chown=app:app /app/app.war app.war
 
-# Expone el puerto
+USER app
 EXPOSE 5000
 
-# Comando para ejecutar la aplicación
-CMD ["java", "-jar", "backend-0.0.1-SNAPSHOT.war"]
+# Memoria según el límite del contenedor (Kubernetes resources.limits).
+ENV JAVA_TOOL_OPTIONS="-XX:MaxRAMPercentage=75.0 -XX:+ExitOnOutOfMemoryError"
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=90s --retries=3 \
+  CMD wget -qO- http://127.0.0.1:5000/actuator/health/liveness || exit 1
+
+ENTRYPOINT ["java", "-jar", "/app/app.war"]
