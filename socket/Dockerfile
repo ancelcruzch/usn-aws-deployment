@@ -20,6 +20,6 @@ USER 1000:1000
 EXPOSE 8800
 
 HEALTHCHECK --interval=30s --timeout=3s --retries=3 \
-  CMD wget -qO- http://127.0.0.1:8800/health || exit 1
+  CMD ["wget", "-qO-", "http://127.0.0.1:8800/health"]
 
 CMD ["node", "index.js"]
