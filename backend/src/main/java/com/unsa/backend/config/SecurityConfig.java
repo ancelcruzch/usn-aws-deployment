@@ -27,6 +27,8 @@ public class SecurityConfig {
                 return http
                                 .csrf(AbstractHttpConfigurer::disable)
                                 .authorizeHttpRequests(authorize -> authorize
+                                                // Health checks de Kubernetes (sin datos sensibles)
+                                                .requestMatchers("/actuator/health/**").permitAll()
                                                 .requestMatchers("/auth/**").permitAll()
                                                 .requestMatchers("/user/**").permitAll()
                                                 .requestMatchers("/posts/**").permitAll()
