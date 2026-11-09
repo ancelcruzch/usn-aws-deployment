@@ -1,0 +1,75 @@
+# Entorno de desarrollo local (no es el despliegue en AWS).
+# Uso: cp .env.example .env  →  docker compose up --build
+# Las credenciales se leen de .env (ignorado por Git).
+services:
+  mysql:
+    image: mysql:8.0
+    container_name: social_mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Definir MYSQL_ROOT_PASSWORD en .env}
+      MYSQL_DATABASE: railway
+    ports:
+      - "3307:3306"
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: social_backend
+    restart: unless-stopped
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/railway
+      SPRING_DATASOURCE_USERNAME: root
+      SPRING_DATASOURCE_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME:-}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY:-}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET:-}
+    ports:
+      - "5001:5000"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  socket:
+    build:
+      context: ./socket
+    container_name: social_socket
+    restart: unless-stopped
+    ports:
+      - "8800:8800"
+
+  ai-service:
+    build:
+      context: ./ai-service
+    container_name: social_ai_service
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: ./client
+      args:
+        REACT_APP_API_URL: http://localhost:5001
+        REACT_APP_PUBLIC_FOLDER: http://localhost:5001/images/
+        REACT_APP_SOCKET_URL: http://localhost:8800
+        REACT_APP_AI_URL: http://localhost:8000
+    container_name: social_frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+      - socket
+      - ai-service
+
+volumes:
+  mysql_data:

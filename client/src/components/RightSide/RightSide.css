@@ -1,0 +1,21 @@
+.RightSide {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+}
+
+.r-button {
+    height: 2.8rem;
+    width: 100%;
+    border-radius: 12px;
+    font-size: 0.95rem;
+    font-weight: 700;
+    background: #a10202;
+    box-shadow: 0 4px 12px rgba(161, 2, 2, 0.2);
+}
+
+.r-button:hover {
+    background: #800101;
+    transform: translateY(-2px);
+    box-shadow: 0 6px 16px rgba(161, 2, 2, 0.3);
+}

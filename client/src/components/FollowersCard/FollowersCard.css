@@ -1,0 +1,92 @@
+.FollowersCard {
+    width: 100%;
+    border-radius: 16px;
+    gap: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    background-color: #ffffff;
+    border: 1px solid #e2e8f0;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.04);
+    padding: 1.25rem;
+    box-sizing: border-box;
+}
+
+.FollowersCard > h3 {
+    margin: 0;
+    font-size: 1rem;
+    font-weight: 700;
+    color: #0f172a;
+    border-bottom: 1px solid #f1f5f9;
+    padding-bottom: 0.65rem;
+}
+
+.follower {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.follower > div {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+.followerImage {
+    width: 2.8rem;
+    height: 2.8rem;
+    border-radius: 50%;
+    object-fit: cover;
+    border: 1px solid #e2e8f0;
+}
+
+.name {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+}
+
+.name > span:nth-of-type(1) {
+    font-weight: 700;
+    font-size: 0.9rem;
+    color: #1e293b;
+}
+
+.name > span:nth-of-type(2) {
+    font-size: 0.78rem;
+    color: #94a3b8;
+}
+
+.fc-button {
+    height: 2rem;
+    padding: 0 16px;
+    border-radius: 9999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+}
+
+.UnfollowButton {
+    color: #a10202;
+    border: 1.5px solid #a10202;
+    cursor: pointer;
+    background: transparent;
+}
+
+.UnfollowButton:hover {
+    background: #fef2f2;
+}
+
+.FollowersCard > button {
+    color: #a10202;
+    font-weight: 700;
+    font-size: 0.85rem !important;
+    text-align: center;
+    padding-top: 0.5rem !important;
+    transition: opacity 0.15s ease;
+}
+
+.FollowersCard > button:hover {
+    opacity: 0.75;
+}

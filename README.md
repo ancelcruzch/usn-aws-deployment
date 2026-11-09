@@ -1,55 +1,92 @@
 # USN AWS Deployment
 
-Proyecto académico para contenerizar y desplegar una aplicación de red social en Amazon Web Services.
+Proyecto integrador de Cloud Computing: desarrollo, automatización y operación
+de **Universe Social Network (USN)**, una red social cloud-native desplegada en
+Amazon Web Services.
 
-La aplicación original utiliza:
+## Componentes de la aplicación
 
-- React para el frontend.
-- Spring Boot para el backend.
-- MySQL como base de datos.
-- Docker y Docker Compose para el entorno local.
-- Kubernetes mediante Amazon EKS para el despliegue.
-- Amazon ECR para almacenar las imágenes Docker.
-- Terraform para crear la infraestructura en AWS.
+| Servicio | Carpeta | Tecnología | Puerto | Función |
+| --- | --- | --- | --- | --- |
+| Frontend | `client/` | React 18 | 3000 | Interfaz web |
+| Backend | `backend/` | Spring Boot 3.2 (Java 17) | 5000 | API REST: usuarios, posts, chat, notificaciones (JWT) |
+| Socket | `socket/` | Node.js + Socket.io | 8800 | Mensajes y notificaciones en tiempo real |
+| AI service | `ai-service/` | Python + FastAPI | 8000 | Análisis de sentimiento y moderación de contenido |
+| Base de datos | — | MySQL 8 | 3306 | Local: contenedor. AWS: **Amazon RDS** |
 
-## Objetivo
+Las imágenes que suben los usuarios se guardan en **Cloudinary** (servicio
+externo), por lo que el backend no guarda estado en disco y puede escalar
+horizontalmente.
 
-El objetivo es ejecutar primero la aplicación localmente con Docker Compose y después desplegarla en Amazon EKS utilizando infraestructura como código.
-
-El servicio de chat en tiempo real no forma parte del alcance inicial.
-
-## Flujo de despliegue
+## Arquitectura en AWS
 
 ```text
-Aplicación local
-      ↓
-Docker Compose
-      ↓
-Imágenes Docker
-      ↓
-Amazon ECR
-      ↓
-Amazon EKS
+GitHub ──push/PR──► GitHub Actions ──► Amazon ECR (imágenes) ──► Amazon EKS (us-east-2)
+                    (CI / CD)                                     ├─ frontend, backend, socket, ai-service
+                                                                  ├─ HPA + metrics-server
+                                                                  └─ CloudWatch Container Insights
+                                                     Amazon RDS MySQL (subred privada)
+Infraestructura: Terraform (infrastructure/terraform)
 ```
 
-## Estructura prevista
+Detalle de la infraestructura, decisiones de diseño, costos y procedimientos
+para crear, actualizar y destruir el entorno:
+[infrastructure/terraform/README.md](infrastructure/terraform/README.md).
+
+## Estructura del repositorio
 
 ```text
 usn-aws-deployment/
-├── backend/
-├── client/
-├── docker-compose.yml
-├── infrastructure/
-│   └── terraform/
-├── kubernetes/
-└── README.md
+├── backend/                  API Spring Boot (Maven)
+├── client/                   Frontend React
+├── socket/                   Servidor Socket.io
+├── ai-service/               Microservicio FastAPI
+├── infrastructure/terraform/ Infraestructura como código (AWS)
+├── .github/workflows/        Pipelines de GitHub Actions (CI/CD)
+├── docker-compose.yml        Entorno de desarrollo local
+├── init.sql                  Esquema inicial para MySQL local
+└── .env.example              Plantilla de variables locales
 ```
 
-## Estrategia de ramas
+## Ejecución local (desarrollo)
 
-- `main`: código revisado y estable.
-- `feature/import-application`: importación y limpieza de la aplicación.
-- `feature/local-docker-compose`: ejecución local con Docker Compose.
-- `feature/terraform-eks`: infraestructura de AWS con Terraform.
-- `feature/kubernetes-manifests`: recursos de Kubernetes para EKS.
+Requisitos: Docker Desktop.
 
+```bash
+cp .env.example .env          # completar MYSQL_ROOT_PASSWORD (y Cloudinary, opcional)
+docker compose up --build
+```
+
+| Servicio | URL |
+| --- | --- |
+| Frontend | <http://localhost:3000> |
+| Backend | <http://localhost:5001> |
+| Socket | <http://localhost:8800/health> |
+| AI service | <http://localhost:8000/docs> |
+
+Para detener: `docker compose down` (agregar `-v` para borrar también los datos
+de MySQL).
+
+## Despliegue en AWS
+
+1. Infraestructura: ver [infrastructure/terraform/README.md](infrastructure/terraform/README.md)
+   (capa `base` una vez; capa `platform` en cada sesión de trabajo).
+2. Aplicación: el workflow **CD** (`.github/workflows/cd.yml`) se ejecuta en
+   cada merge a `main`: construye las imágenes, las publica en ECR con el SHA
+   del commit, las despliega en EKS y verifica que la aplicación responda.
+
+## Gestión de credenciales
+
+- Ninguna credencial se guarda en el repositorio: `.env` está ignorado por Git.
+- En AWS, la contraseña de la base de datos la genera Terraform y se guarda en
+  Secrets Manager; el pipeline de CD la entrega al backend como Secret de
+  Kubernetes.
+- GitHub Actions usa un usuario IAM con permisos mínimos, cuyas claves se
+  guardan como GitHub Secrets cifrados.
+
+## Flujo de trabajo con Git
+
+- `main`: rama protegida; solo recibe cambios mediante Pull Request aprobado y
+  con los checks de CI en verde.
+- Cada cambio se desarrolla en una rama `feature/<descripción>` creada desde
+  `main` actualizado.
