@@ -67,6 +67,38 @@ docker compose up --build
 Para detener: `docker compose down` (agregar `-v` para borrar también los datos
 de MySQL).
 
+## Pruebas automatizadas
+
+| Servicio | Tipo | Herramientas | Qué cubre |
+| --- | --- | --- | --- |
+| Backend | Unitarias (`*Test.java`, 139) | JUnit 5, Mockito | Controladores, servicios y modelos aislados |
+| Backend | Integración (`*IT.java`) | Spring Boot Test, Testcontainers (MySQL 8 real) | API completa: health, registro/login, posts, likes, timeline, seguridad |
+| AI service | Unitarias / API | pytest, FastAPI TestClient | Reglas de sentimiento y moderación, validación, estadísticas |
+
+Requisitos: Java 17 y Docker en ejecución (Testcontainers crea un MySQL desechable;
+no se necesita una base de datos instalada).
+
+```bash
+# Backend: unitarias + integración + cobertura
+cd backend && ./mvnw verify
+
+# AI service: análisis estático + pruebas + cobertura
+cd ai-service
+pip install -r requirements-dev.txt
+ruff check . && ruff format --check .
+pytest --junitxml=reports/junit.xml --cov=main --cov-report=html:reports/coverage
+```
+
+| Reporte | Ubicación |
+| --- | --- |
+| JUnit unitarias (backend) | `backend/target/surefire-reports/` |
+| JUnit integración (backend) | `backend/target/failsafe-reports/` |
+| Cobertura unitarias / integración (backend) | `backend/target/site/jacoco/` y `backend/target/site/jacoco-it/` |
+| JUnit y cobertura (AI service) | `ai-service/reports/` |
+
+En GitHub Actions las pruebas se ejecutan en cada Pull Request y sus reportes
+se publican en la ejecución del workflow.
+
 ## Despliegue en AWS
 
 1. Infraestructura: ver [infrastructure/terraform/README.md](infrastructure/terraform/README.md)

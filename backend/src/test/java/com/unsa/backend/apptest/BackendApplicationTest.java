@@ -17,7 +17,8 @@ class BackendApplicationTest {
     */ 
     @Test
     void contextLoads() {
-        BackendApplication.main(new String[]{});
+        // Puerto aleatorio: evita conflictos con otro proceso en el puerto 5000.
+        BackendApplication.main(new String[]{"--server.port=0"});
         assertNotNull(BackendApplication.class);
     }
 }

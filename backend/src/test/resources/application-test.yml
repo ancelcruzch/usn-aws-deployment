@@ -1,0 +1,24 @@
+# Perfil "test" (lo activan Surefire y Failsafe en pom.xml).
+# La URL jdbc:tc: hace que Testcontainers levante un MySQL 8.0 desechable en
+# Docker la primera vez que se abre una conexión, y lo elimine al terminar.
+# Así los tests no dependen de una base de datos instalada en la máquina y se
+# ejecutan igual en local y en GitHub Actions.
+spring:
+  datasource:
+    url: jdbc:tc:mysql:8.0:///railway?TC_DAEMON=true
+    driver-class-name: org.testcontainers.jdbc.ContainerDatabaseDriver
+    username: test
+    password: test
+  jpa:
+    hibernate:
+      ddl-auto: update
+
+# Puerto aleatorio para no chocar con otros procesos locales.
+server:
+  port: 0
+
+logging:
+  level:
+    root: WARN
+    com.unsa.backend: INFO
+    org.testcontainers: INFO
