@@ -1,0 +1,269 @@
+# Integración continua de la aplicación. Se ejecuta en cada Pull Request a main
+# (y en cada push a main). Si cualquier job falla, el PR no se puede mergear
+# (regla de protección de la rama main) y el CD no despliega código roto.
+#
+#   backend     → compilación, 139 pruebas unitarias + integración (MySQL real), cobertura
+#   ai-service  → análisis estático (ruff), pruebas (pytest), cobertura
+#   frontend    → análisis estático (ESLint), build de producción
+#   socket      → instalación reproducible y verificación de sintaxis
+#   dockerfiles → buenas prácticas de Docker (hadolint)
+#   e2e         → construye las 4 imágenes, levanta la aplicación completa y
+#                 prueba los flujos reales a través del proxy nginx
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  checks: write        # publicar los resultados de las pruebas en el PR
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: Backend (tests + cobertura)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: maven
+
+      # verify = compilar + pruebas unitarias (Surefire) + pruebas de integración
+      # (Failsafe, MySQL 8 con Testcontainers) + reportes JaCoCo.
+      - name: Compilar y ejecutar pruebas
+        run: ./mvnw -B -ntp verify
+
+      - name: Publicar resultados de pruebas
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Resultados backend (JUnit)
+          path: backend/target/surefire-reports/*.xml,backend/target/failsafe-reports/*.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Resumen de cobertura
+        if: always()
+        run: |
+          coverage() {
+            [ -f "$1" ] || { echo "n/d"; return; }
+            awk -F, 'NR>1 {m+=$8; c+=$9} END {if (m+c>0) printf "%.1f %%", 100*c/(m+c); else print "n/d"}' "$1"
+          }
+          {
+            echo "### Cobertura de líneas (backend)"
+            echo "| Pruebas | Cobertura |"
+            echo "| --- | --- |"
+            echo "| Unitarias | $(coverage target/site/jacoco/jacoco.csv) |"
+            echo "| Integración | $(coverage target/site/jacoco-it/jacoco.csv) |"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Guardar reportes
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: backend-reports
+          path: |
+            backend/target/surefire-reports/
+            backend/target/failsafe-reports/
+            backend/target/site/jacoco/
+            backend/target/site/jacoco-it/
+          if-no-files-found: warn
+
+  ai-service:
+    name: AI service (ruff + pytest)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-service
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: ai-service/requirements-dev.txt
+
+      - name: Instalar dependencias
+        run: pip install -r requirements-dev.txt
+
+      - name: Análisis estático (ruff)
+        run: |
+          ruff check --output-format=github .
+          ruff format --check .
+
+      - name: Pruebas (pytest)
+        run: >
+          pytest
+          --junitxml=reports/junit.xml
+          --cov=main --cov-report=term --cov-report=xml:reports/coverage.xml
+          --cov-report=html:reports/coverage
+
+      - name: Publicar resultados de pruebas
+        if: always()
+        uses: dorny/test-reporter@v3
+        with:
+          name: Resultados ai-service (pytest)
+          path: ai-service/reports/junit.xml
+          reporter: java-junit
+          fail-on-error: false
+
+      - name: Guardar reportes
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ai-service-reports
+          path: ai-service/reports/
+          if-no-files-found: warn
+
+  frontend:
+    name: Frontend (ESLint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: client
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci --legacy-peer-deps --no-audit --no-fund
+
+      - name: Análisis estático (ESLint)
+        run: npx eslint --ext .js,.jsx --max-warnings=0 src
+
+      # CI=true: las advertencias de compilación se tratan como errores.
+      - name: Build de producción
+        env:
+          CI: "true"
+          GENERATE_SOURCEMAP: "false"
+        run: npm run build
+
+  socket:
+    name: Socket (instalación + sintaxis)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: socket
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: socket/package-lock.json
+
+      - name: Instalar dependencias (reproducible)
+        run: npm ci --omit=dev --no-audit --no-fund
+
+      - name: Verificar sintaxis
+        run: node --check index.js
+
+  dockerfiles:
+    name: Dockerfiles (hadolint)
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        service: [backend, client, socket, ai-service]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: hadolint ${{ matrix.service }}/Dockerfile
+        uses: hadolint/hadolint-action@v3.5.0
+        with:
+          dockerfile: ${{ matrix.service }}/Dockerfile
+          failure-threshold: warning
+
+  # Prueba de punta a punta: las mismas imágenes que se despliegan en EKS,
+  # unidas por nginx como en producción. Detecta errores que las pruebas de
+  # cada servicio por separado no ven (por ejemplo, URLs mal configuradas).
+  e2e:
+    name: E2E (imágenes + app completa)
+    needs: [backend, ai-service, frontend, socket, dockerfiles]
+    runs-on: ubuntu-latest
+    env:
+      BASE: http://localhost:3000
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Construir imágenes y levantar la aplicación
+        run: |
+          export MYSQL_ROOT_PASSWORD="ci-$(openssl rand -hex 12)"
+          echo "::add-mask::$MYSQL_ROOT_PASSWORD"
+          echo "MYSQL_ROOT_PASSWORD=$MYSQL_ROOT_PASSWORD" >> "$GITHUB_ENV"
+          docker compose up --build -d
+          docker compose ps
+
+      - name: Esperar a que la aplicación esté lista
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS "$BASE/api/actuator/health/readiness" >/dev/null 2>&1; then
+              echo "Lista tras $((i * 5)) s"; exit 0
+            fi
+            sleep 5
+          done
+          echo "::error::La aplicación no quedó lista en 5 minutos"; exit 1
+
+      - name: Pruebas de humo a través de nginx
+        run: |
+          set -euo pipefail
+          check() { echo "✔ $1"; }
+
+          curl -fsS "$BASE/healthz" >/dev/null && check "nginx /healthz"
+          curl -fsS "$BASE/" | grep -q '<div id="root">' && check "React se sirve en /"
+
+          # El JavaScript compilado debe llamar a la API por /api, nunca a localhost.
+          js=$(curl -fsS "$BASE/" | grep -oE '/static/js/main\.[a-z0-9]+\.js' | head -1)
+          bundle=$(curl -fsS "$BASE$js")
+          if echo "$bundle" | grep -q 'localhost:5000'; then
+            echo "::error::El frontend apunta a localhost:5000"; exit 1
+          fi
+          echo "$bundle" | grep -q 'baseURL:"/api"' && check "Frontend configurado con /api"
+
+          user="ci$RANDOM$RANDOM"
+          reg=$(curl -fsS -X POST "$BASE/api/auth/register" -H 'Content-Type: application/json' \
+                -d "{\"username\":\"$user\",\"password\":\"Clave-CI-123\",\"firstname\":\"CI\",\"lastname\":\"Bot\"}")
+          echo "$reg" | jq -e '.token | length > 0' >/dev/null && check "Registro (backend + MySQL)"
+          uid=$(echo "$reg" | jq -r '.id')
+
+          curl -fsS -X POST "$BASE/api/auth/login" -H 'Content-Type: application/json' \
+            -d "{\"username\":\"$user\",\"password\":\"Clave-CI-123\"}" | jq -e '.token' >/dev/null && check "Login"
+
+          curl -fsS -X POST "$BASE/api/posts" -H 'Content-Type: application/json' \
+            -d "{\"userId\":$uid,\"desc\":\"Post de prueba desde CI\"}" | jq -e '.id' >/dev/null && check "Crear post"
+
+          curl -fsS "$BASE/api/images/defaultProfile.png" -o /dev/null && check "Imagen por defecto"
+
+          curl -fsS -X POST "$BASE/ai/analyze" -H 'Content-Type: application/json' \
+            -d '{"text":"excelente proyecto"}' | jq -e '.sentiment == "POSITIVE"' >/dev/null && check "AI service"
+
+          curl -fsS "$BASE/socket.io/?EIO=4&transport=polling" | grep -q '"sid"' && check "Socket.io"
+
+      - name: Logs ante fallo
+        if: failure()
+        run: docker compose logs --tail=80
+
+      - name: Detener la aplicación
+        if: always()
+        run: docker compose down -v
