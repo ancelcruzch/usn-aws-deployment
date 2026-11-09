@@ -22,13 +22,14 @@ FROM eclipse-temurin:17-jre-alpine
 LABEL org.opencontainers.image.title="usn-backend" \
       org.opencontainers.image.description="API REST de Universe Social Network (Spring Boot)"
 
-# Usuario sin privilegios: el proceso no corre como root.
-RUN addgroup -S app && adduser -S app -G app
+# Usuario sin privilegios con UID numérico fijo: Kubernetes (runAsNonRoot)
+# solo puede verificar que no es root si el USER es numérico.
+RUN addgroup -S -g 10001 app && adduser -S -u 10001 -G app app
 WORKDIR /app
 
 COPY --from=build --chown=app:app /app/app.war app.war
 
-USER app
+USER 10001:10001
 EXPOSE 5000
 
 # Memoria según el límite del contenedor (Kubernetes resources.limits).
