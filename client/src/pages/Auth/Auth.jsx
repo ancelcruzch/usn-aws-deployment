@@ -64,7 +64,7 @@ const Auth = () => {
 
         <div className="Webname">
           <h1 className="NameApp">UNIverse</h1>
-          <h6>"Expandiendo Horizontes: Tu Red Social Universitaria"</h6>
+          <h6>Conecta, comparte y crece en tu comunidad universitaria.</h6>
         </div>
       </div>
 
