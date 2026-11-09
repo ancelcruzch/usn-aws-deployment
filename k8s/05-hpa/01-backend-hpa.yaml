@@ -1,0 +1,41 @@
+# Escalado horizontal del backend según el uso de CPU (metrics-server, instalado
+# por Terraform). Objetivo: 60 % de la CPU solicitada (requests.cpu = 250m),
+# es decir ~150m por réplica en promedio.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: backend
+  namespace: usn
+  labels:
+    app.kubernetes.io/name: backend
+    app.kubernetes.io/part-of: usn
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: backend
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 60
+  behavior:
+    # Sube rápido ante picos: hasta duplicar réplicas cada 30 s.
+    scaleUp:
+      stabilizationWindowSeconds: 0
+      policies:
+        - type: Percent
+          value: 100
+          periodSeconds: 30
+      selectPolicy: Max
+    # Baja con cautela: espera 2 min estable y retira 1 réplica por minuto.
+    scaleDown:
+      stabilizationWindowSeconds: 120
+      policies:
+        - type: Pods
+          value: 1
+          periodSeconds: 60

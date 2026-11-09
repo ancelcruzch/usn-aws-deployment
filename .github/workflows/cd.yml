@@ -147,9 +147,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       TAG: ${{ needs.detect.outputs.tag }}
-      # Carpetas de manifiestos que se aplican. MySQL ya no va en el cluster
-      # (la base es Amazon RDS); el Namespace lo crea Terraform.
-      MANIFEST_DIRS: "k8s/backend k8s/socket k8s/ai-service k8s/frontend k8s/hpa"
+      # Los manifiestos están en carpetas numeradas (k8s/01-backend, 02-socket,
+      # ...) y se aplican en ese orden. El Namespace lo crea Terraform.
       DEPLOYMENTS: "backend:usn-backend socket:usn-socket ai-service:usn-ai-service frontend:usn-frontend"
     steps:
       - uses: actions/checkout@v7
@@ -185,13 +184,30 @@ jobs:
             --from-literal=SPRING_DATASOURCE_PASSWORD="$password" \
             --dry-run=client -o yaml | kubectl apply -f -
 
+      # Opcional: solo si el repositorio tiene los Secrets de Cloudinary.
+      - name: Secret cloudinary-credentials (opcional)
+        env:
+          CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+          CLOUDINARY_API_KEY: ${{ secrets.CLOUDINARY_API_KEY }}
+          CLOUDINARY_API_SECRET: ${{ secrets.CLOUDINARY_API_SECRET }}
+        run: |
+          if [ -z "$CLOUDINARY_API_SECRET" ]; then
+            echo "::notice::Sin Secrets de Cloudinary: la subida de imágenes queda deshabilitada."
+            exit 0
+          fi
+          kubectl -n "$K8S_NAMESPACE" create secret generic cloudinary-credentials \
+            --from-literal=CLOUDINARY_CLOUD_NAME="$CLOUDINARY_CLOUD_NAME" \
+            --from-literal=CLOUDINARY_API_KEY="$CLOUDINARY_API_KEY" \
+            --from-literal=CLOUDINARY_API_SECRET="$CLOUDINARY_API_SECRET" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
       # Copia los manifiestos y reemplaza cada imagen usn-* por la recién
       # publicada (registro de esta cuenta + tag del commit).
       - name: Preparar manifiestos con las imágenes nuevas
         run: |
           mkdir -p rendered
-          for d in $MANIFEST_DIRS; do
-            [ -d "$d" ] || { echo "::notice::$d no existe; se omite."; continue; }
+          for d in $(ls -d k8s/[0-9][0-9]-*/ | sort); do
+            d="${d%/}"
             mkdir -p "rendered/$d"
             for f in "$d"/*.yaml "$d"/*.yml; do
               [ -f "$f" ] || continue
@@ -201,8 +217,15 @@ jobs:
           done
           grep -rh "image:" rendered || true
 
+      # En orden numérico: los Services de backend, socket y ai-service deben
+      # existir antes de que arranque nginx (04-frontend), y el HPA al final.
       - name: Aplicar manifiestos
-        run: kubectl apply -n "$K8S_NAMESPACE" -R -f rendered/
+        run: |
+          for d in $(ls -d rendered/k8s/[0-9][0-9]-*/ | sort); do
+            d="${d#rendered/}"; d="${d%/}"
+            echo "== $d"
+            kubectl apply -n "$K8S_NAMESPACE" -f "rendered/$d"
+          done
 
       - name: Verificar rollout
         id: rollout
@@ -238,8 +261,12 @@ jobs:
           done
           [ -n "$host" ] || { echo "::error::El Service frontend no obtuvo dirección pública."; exit 1; }
           echo "URL: http://$host"
+          # El balanceador y su DNS tardan unos minutos en estar disponibles.
+          # Se comprueba la página (nginx) y la API detrás del proxy (backend + RDS).
           for i in $(seq 1 30); do
-            if curl -fsS -o /dev/null --max-time 10 "http://$host"; then
+            if curl -fsS -o /dev/null --max-time 10 "http://$host/" \
+               && curl -fsS --max-time 10 "http://$host/api/actuator/health/readiness"; then
+              echo
               echo "La aplicación responde en http://$host"
               echo "### Aplicación desplegada: http://$host" >> "$GITHUB_STEP_SUMMARY"
               exit 0

@@ -1,0 +1,62 @@
+# Microservicio de IA (FastAPI). Sin estado relevante: escala con el HPA (1 a 3).
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ai-service
+  namespace: usn
+  labels:
+    app: ai-service
+    app.kubernetes.io/name: ai-service
+    app.kubernetes.io/part-of: usn
+spec:
+  # Réplicas administradas por el HPA (1 a 3).
+  revisionHistoryLimit: 5
+  selector:
+    matchLabels:
+      app: ai-service
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: ai-service
+        app.kubernetes.io/name: ai-service
+        app.kubernetes.io/part-of: usn
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: ai-service
+          image: ECR_REGISTRY/usn-ai-service:IMAGE_TAG
+          imagePullPolicy: IfNotPresent
+          ports:
+            - name: http
+              containerPort: 8000
+          resources:
+            requests:
+              cpu: 100m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: http
+            periodSeconds: 5
+            failureThreshold: 2
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
